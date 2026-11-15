@@ -1,0 +1,6 @@
+{
+  "name": "astronomy",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test" }
+}

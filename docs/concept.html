@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>astronomy 컨셉 시안</title>
+<style>
+:root{
+  --bg:#0b1120; --card:#151e33; --line:#2a3655; --ink:#eef2fa; --ink2:#aab4cb; --ink3:#7684a3;
+  --moon:#cfd5df; --saturn:#e8c95a; --mars:#ea6a5e; --jupiter:#d9925a; --venus:#f0c3a8;
+  --good:#3fb68b; --mid:#d6a740; --bad:#e0685c;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif}
+.wrap{max-width:440px;margin:0 auto;padding:12px 16px 40px}
+.note{font-size:12px;color:var(--ink3);border:1px dashed var(--line);border-radius:8px;padding:6px 10px;margin-bottom:12px}
+header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+header h1{font-size:20px;margin:0;flex:1}
+header h1 small{display:block;font-size:12px;font-weight:400;color:var(--ink3)}
+.btn{min-width:44px;height:44px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);display:grid;place-items:center;font-size:13px;padding:0 10px}
+.days{display:flex;gap:6px;margin-bottom:12px}
+.days div{flex:1;height:44px;border-radius:12px;border:1px solid var(--line);display:grid;place-items:center;font-size:12px;color:var(--ink2);line-height:1.2;text-align:center}
+.days .on{background:var(--ink);color:var(--bg);font-weight:700;border-color:var(--ink)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;margin-bottom:12px}
+.card h2{font-size:14px;margin:0 0 8px;color:var(--ink2);font-weight:600}
+.verdict{display:flex;gap:14px;align-items:center}
+.score{width:84px;height:84px;border-radius:50%;border:5px solid var(--good);display:grid;place-items:center;text-align:center;flex:none}
+.score b{font-size:28px;line-height:1}
+.score span{font-size:11px;color:var(--ink2);display:block}
+.verdict p{margin:0}
+.verdict .big{font-size:17px;font-weight:700}
+.chips{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:12px}
+.chip{border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:12px;color:var(--ink2)}
+.chip b{display:block;font-size:15px;color:var(--ink)}
+.tag{font-size:11px;border-radius:6px;padding:1px 6px;margin-left:4px;border:1px solid currentColor}
+.tg{color:var(--good)} .tm{color:var(--mid)} .tb{color:var(--bad)}
+.sun{display:flex;justify-content:space-between;font-size:13px;color:var(--ink2);margin-bottom:4px}
+.sun b{font-size:17px;color:var(--ink)}
+svg{display:block;width:100%;height:auto}
+svg text{fill:var(--ink3);font-size:10px;font-family:inherit}
+.legend{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 8px;font-size:12px;color:var(--ink2);margin-top:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.moonline{text-align:center;font-size:13px;color:var(--ink2);margin-top:8px}
+rect.c{width:25px;height:22px;rx:3px}
+.c0{fill:#1f2c49}.c1{fill:#3d4e76}.c2{fill:#6d7ea5}.c3{fill:#a6b3cf}.c4{fill:#e2e8f4}
+.g{fill:#1d4d42}.m{fill:#574a22}.b{fill:#5c2b2a}
+svg text.v{fill:var(--ink);font-size:9.5px;text-anchor:middle}
+svg text.r{text-anchor:end;fill:var(--ink2)}
+.key{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11px;color:var(--ink3);margin-top:8px}
+.key span i{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:4px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{padding:7px 4px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--ink3);font-weight:500;font-size:11px}
+th:first-child,td:first-child{text-align:left}
+td i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+tr:last-child td{border-bottom:0}
+/* 2차: 무게감 — 각진 패널, 굵은 머리띠, 고정폭 숫자 */
+:root{--bg:#05080f;--card:#0c1220;--line:#27314a}
+body{font-weight:500}
+.card{border-radius:12px;border:1px solid #33405f;padding:0 14px 14px;overflow:hidden}
+.card h2{margin:0 -14px 12px;padding:9px 14px;background:#131b2e;border-bottom:1px solid #33405f;color:var(--ink);font-size:13px;font-weight:800;letter-spacing:.08em}
+.btn,.days div,.chip{border-radius:9px}
+.btn{font-weight:700;background:#0c1220;border-color:#33405f}
+.btn.red{color:#ff5a4d;border-color:#7a2a25}
+header h1{font-weight:900;letter-spacing:.02em;font-size:24px}
+.days .on{background:#dfe5f2}
+b,td,.v,.sun b{font-variant-numeric:tabular-nums}
+td,.chip b,.sun b,.score b{font-family:Consolas,"SF Mono",Menlo,monospace}
+.verdict{align-items:flex-start}
+.score{border-radius:10px;border:2px solid var(--good);border-left-width:6px;width:92px;height:92px;background:#081410}
+.score b{font-size:34px}
+.brief{list-style:none;margin:0;padding:0;flex:1;font-size:13px}
+.brief li{display:grid;grid-template-columns:62px 1fr;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)}
+.brief li:last-child{border-bottom:0}
+.brief span{color:var(--ink3);font-weight:700}
+.brief b{font-weight:700}
+th{font-weight:800;letter-spacing:.06em;border-bottom:2px solid #33405f}
+rect.c{rx:2px}
+.fold{display:flex;justify-content:space-between;align-items:center;min-height:44px;color:var(--ink2);font-size:14px}
+footer{font-size:11px;color:var(--ink3);line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="note">컨셉 시안 — 배치와 형식을 보기 위한 그림입니다. 숫자는 모두 예시 값입니다.</div>
+
+  <header>
+    <h1>포항 <small>36.02°N 129.34°E · 해발 12m</small></h1>
+    <div class="btn">검색</div><div class="btn">위치</div><div class="btn">저장</div><div class="btn red">적색</div>
+  </header>
+
+  <div class="days">
+    <div class="on">오늘 밤<br>16 월</div><div>17<br>화</div><div>18<br>수</div><div>19<br>목</div><div>20<br>금</div>
+  </div>
+
+  <!-- 1. 한 줄 판정 -->
+  <div class="card">
+    <h2>오늘 밤 판정</h2>
+    <div class="verdict">
+      <div class="score"><div><b>78</b><span>관측 점수</span></div></div>
+      <ul class="brief">
+        <li><span>판정</span><b>좋음</b></li>
+        <li><span>최적 시간</span><b>20:00 ~ 23:30</b></li>
+        <li><span>달</span><b>39% 초승달 · 22:03 짐</b></li>
+        <li><span>구름</span><b>03시부터 하층운 유입</b></li>
+        <li><span>주의</span><b>결로 · 새벽 제트기류 강함</b></li>
+      </ul>
+    </div>
+    <div class="chips">
+      <div class="chip">구름(밤 평균)<b>12% <span class="tag tg">● 맑음</span></b></div>
+      <div class="chip">시상(추정)<b>1.4″ <span class="tag tg">● 좋음</span></b></div>
+      <div class="chip">제트기류<b>19m/s <span class="tag tm">▲ 보통</span></b></div>
+      <div class="chip">이슬점 차<b>2.1℃ <span class="tag tb">■ 결로 주의</span></b></div>
+    </div>
+  </div>
+
+  <!-- 2. 고도 곡선 -->
+  <div class="card">
+    <h2>오늘 밤 하늘</h2>
+    <div class="sun"><span>해짐 <b>17:19</b></span><span>천문박명 18:46 ~ 05:38</span><span>해뜸 <b>07:05</b></span></div>
+    <svg viewBox="-34 0 424 178" role="img" aria-label="천체 고도 곡선">
+      <defs><clipPath id="cp"><rect x="0" y="0" width="390" height="150"/></clipPath></defs>
+      <!-- 박명 음영: 낮 → 시민 → 항해 → 천문 → 밤 -->
+      <rect x="0" y="0" width="390" height="150" fill="#0d1428"/>
+      <rect x="0" y="0" width="8" height="150" fill="#3b4a72"/><rect x="8" y="0" width="12" height="150" fill="#2c3960"/>
+      <rect x="20" y="0" width="13" height="150" fill="#202b4d"/><rect x="33" y="0" width="13" height="150" fill="#161f3b"/>
+      <rect x="329" y="0" width="13" height="150" fill="#161f3b"/><rect x="342" y="0" width="13" height="150" fill="#202b4d"/>
+      <rect x="355" y="0" width="11" height="150" fill="#2c3960"/><rect x="366" y="0" width="24" height="150" fill="#3b4a72"/>
+      <!-- 눈금 -->
+      <g stroke="#2a3655" stroke-width="1">
+        <line x1="0" y1="103" x2="390" y2="103" stroke-dasharray="2 4"/><line x1="0" y1="57" x2="390" y2="57" stroke-dasharray="2 4"/>
+        <line x1="26" y1="0" x2="26" y2="150"/><line x1="104" y1="0" x2="104" y2="150"/><line x1="182" y1="0" x2="182" y2="150"/><line x1="260" y1="0" x2="260" y2="150"/><line x1="338" y1="0" x2="338" y2="150"/>
+      </g>
+      <text class="r" x="-6" y="106">30°</text><text class="r" x="-6" y="60">60°</text><text class="r" x="-6" y="153">지평</text>
+      <!-- 곡선 -->
+      <g clip-path="url(#cp)" fill="none" stroke-width="2.5" stroke-linecap="round">
+        <path d="M -121 150 Q 5 72 131 150" stroke="var(--moon)"/>
+        <path d="M -79 150 Q 95 -22 269 150" stroke="var(--saturn)"/>
+        <path d="M 186 150 Q 360 -62 534 150" stroke="var(--jupiter)" stroke-dasharray="7 4"/>
+        <path d="M 178 150 Q 351 -56 524 150" stroke="var(--mars)"/>
+        <path d="M 301 150 Q 458 30 615 150" stroke="var(--venus)"/>
+      </g>
+      <line x1="0" y1="150" x2="390" y2="150" stroke="#7684a3" stroke-width="1.5"/>
+      <!-- 곡선 이름표 -->
+      <text x="100" y="56" style="fill:var(--saturn);font-size:11px">토성 53°</text>
+      <text x="40" y="128" style="fill:var(--moon);font-size:11px">달</text>
+      <text x="262" y="68" style="fill:var(--mars);font-size:11px" text-anchor="end">화성·목성</text>
+      <text x="350" y="138" style="fill:var(--venus);font-size:11px">금성</text>
+      <!-- 지금 -->
+      <line x1="117" y1="0" x2="117" y2="150" stroke="#eef2fa" stroke-width="1"/>
+      <circle cx="117" cy="65" r="4.5" fill="var(--saturn)" stroke="#0d1428" stroke-width="2"/>
+      <circle cx="117" cy="146" r="4.5" fill="var(--moon)" stroke="#0d1428" stroke-width="2"/>
+      <rect x="96" y="2" width="42" height="15" rx="4" fill="#eef2fa"/><text x="117" y="13" text-anchor="middle" style="fill:#0b1120;font-weight:700">21:30</text>
+      <!-- 시간축 -->
+      <text x="26" y="168" text-anchor="middle">18</text><text x="104" y="168" text-anchor="middle">21</text><text x="182" y="168" text-anchor="middle">00</text><text x="260" y="168" text-anchor="middle">03</text><text x="338" y="168" text-anchor="middle">06</text>
+    </svg>
+    <div class="legend">
+      <span><i style="background:var(--moon)"></i>달</span><span><i style="background:var(--saturn)"></i>토성</span><span><i style="background:var(--mars)"></i>화성</span>
+      <span><i style="background:repeating-linear-gradient(90deg,var(--jupiter) 0 5px,transparent 5px 8px)"></i>목성</span><span><i style="background:var(--venus)"></i>금성</span><span style="color:var(--ink3)">+ 수성·천왕성·해왕성</span>
+    </div>
+    <div class="moonline">달 39% 초승달 · 월령 6.1일 · 22:03 짐</div>
+  </div>
+
+  <!-- 3. 기상 띠 (위 그림과 시간축 일치) -->
+  <div class="card">
+    <h2>관측 기상</h2>
+    <svg viewBox="-34 0 424 150" role="img" aria-label="시간별 구름·시상·제트기류">
+      <text class="r" x="-6" y="15">상층</text><text class="r" x="-6" y="40">중층</text><text class="r" x="-6" y="65">하층</text><text class="r" x="-6" y="95">시상″</text><text class="r" x="-6" y="120">제트</text>
+      <g transform="translate(0,0)">
+        <rect class="c c3" x="0"/><rect class="c c3" x="26"/><rect class="c c2" x="52"/><rect class="c c2" x="78"/><rect class="c c1" x="104"/><rect class="c c0" x="130"/><rect class="c c0" x="156"/><rect class="c c0" x="182"/><rect class="c c0" x="208"/><rect class="c c0" x="234"/><rect class="c c0" x="260"/><rect class="c c1" x="286"/><rect class="c c1" x="312"/><rect class="c c2" x="338"/><rect class="c c2" x="364"/>
+      </g>
+      <g transform="translate(0,25)">
+        <rect class="c c1" x="0"/><rect class="c c1" x="26"/><rect class="c c1" x="52"/><rect class="c c0" x="78"/><rect class="c c0" x="104"/><rect class="c c0" x="130"/><rect class="c c0" x="156"/><rect class="c c0" x="182"/><rect class="c c0" x="208"/><rect class="c c0" x="234"/><rect class="c c0" x="260"/><rect class="c c0" x="286"/><rect class="c c1" x="312"/><rect class="c c1" x="338"/><rect class="c c2" x="364"/>
+      </g>
+      <g transform="translate(0,50)">
+        <rect class="c c0" x="0"/><rect class="c c0" x="26"/><rect class="c c0" x="52"/><rect class="c c0" x="78"/><rect class="c c0" x="104"/><rect class="c c0" x="130"/><rect class="c c0" x="156"/><rect class="c c0" x="182"/><rect class="c c0" x="208"/><rect class="c c1" x="234"/><rect class="c c1" x="260"/><rect class="c c2" x="286"/><rect class="c c3" x="312"/><rect class="c c3" x="338"/><rect class="c c4" x="364"/>
+      </g>
+      <g transform="translate(0,80)">
+        <rect class="c m" x="0"/><rect class="c m" x="26"/><rect class="c m" x="52"/><rect class="c g" x="78"/><rect class="c g" x="104"/><rect class="c g" x="130"/><rect class="c g" x="156"/><rect class="c g" x="182"/><rect class="c m" x="208"/><rect class="c m" x="234"/><rect class="c m" x="260"/><rect class="c b" x="286"/><rect class="c b" x="312"/><rect class="c b" x="338"/><rect class="c b" x="364"/>
+        <text class="v" x="12.5" y="15">1.9</text><text class="v" x="38.5" y="15">1.7</text><text class="v" x="64.5" y="15">1.5</text><text class="v" x="90.5" y="15">1.4</text><text class="v" x="116.5" y="15">1.3</text><text class="v" x="142.5" y="15">1.3</text><text class="v" x="168.5" y="15">1.4</text><text class="v" x="194.5" y="15">1.4</text><text class="v" x="220.5" y="15">1.6</text><text class="v" x="246.5" y="15">1.8</text><text class="v" x="272.5" y="15">2.1</text><text class="v" x="298.5" y="15">2.4</text><text class="v" x="324.5" y="15">2.6</text><text class="v" x="350.5" y="15">2.7</text><text class="v" x="376.5" y="15">2.8</text>
+      </g>
+      <g transform="translate(0,105)">
+        <rect class="c g" x="0"/><rect class="c g" x="26"/><rect class="c g" x="52"/><rect class="c g" x="78"/><rect class="c g" x="104"/><rect class="c g" x="130"/><rect class="c g" x="156"/><rect class="c m" x="182"/><rect class="c m" x="208"/><rect class="c m" x="234"/><rect class="c m" x="260"/><rect class="c b" x="286"/><rect class="c b" x="312"/><rect class="c b" x="338"/><rect class="c b" x="364"/>
+        <text class="v" x="12.5" y="15">16</text><text class="v" x="38.5" y="15">17</text><text class="v" x="64.5" y="15">18</text><text class="v" x="90.5" y="15">18</text><text class="v" x="116.5" y="15">19</text><text class="v" x="142.5" y="15">19</text><text class="v" x="168.5" y="15">20</text><text class="v" x="194.5" y="15">22</text><text class="v" x="220.5" y="15">24</text><text class="v" x="246.5" y="15">27</text><text class="v" x="272.5" y="15">30</text><text class="v" x="298.5" y="15">33</text><text class="v" x="324.5" y="15">35</text><text class="v" x="350.5" y="15">36</text><text class="v" x="376.5" y="15">36</text>
+      </g>
+      <line x1="117" y1="0" x2="117" y2="127" stroke="#eef2fa" stroke-width="1"/>
+      <text x="26" y="143" text-anchor="middle">18</text><text x="104" y="143" text-anchor="middle">21</text><text x="182" y="143" text-anchor="middle">00</text><text x="260" y="143" text-anchor="middle">03</text><text x="338" y="143" text-anchor="middle">06</text>
+    </svg>
+    <div class="key">
+      <span>구름: <i style="background:#1f2c49;border:1px solid #3d4e76"></i>0% <i style="background:#6d7ea5;margin-left:6px"></i>50% <i style="background:#e2e8f4;margin-left:6px"></i>100%</span>
+      <span><i style="background:#1d4d42"></i>좋음 <i style="background:#574a22;margin-left:6px"></i>보통 <i style="background:#5c2b2a;margin-left:6px"></i>나쁨</span>
+      <span>제트 m/s</span>
+    </div>
+  </div>
+
+  <!-- 4. 천체 제원 -->
+  <div class="card">
+    <h2>천체 제원</h2>
+    <table>
+      <tr><th>천체</th><th>뜸</th><th>남중</th><th>짐</th><th>등급</th><th>시직경</th></tr>
+      <tr><td><i style="background:var(--moon)"></i>달</td><td>12:20</td><td>17:12</td><td>22:03</td><td>−10.4</td><td>30.5′</td></tr>
+      <tr><td><i style="background:var(--saturn)"></i>토성</td><td>14:00</td><td>20:40</td><td>03:20</td><td>0.9</td><td>18.6″</td></tr>
+      <tr><td><i style="background:var(--mars)"></i>화성</td><td>23:50</td><td>06:30</td><td>13:10</td><td>0.6</td><td>8.1″</td></tr>
+      <tr><td><i style="background:var(--jupiter)"></i>목성</td><td>00:10</td><td>06:50</td><td>13:30</td><td>−2.2</td><td>37.5″</td></tr>
+      <tr><td><i style="background:var(--venus)"></i>금성</td><td>04:35</td><td>10:20</td><td>16:05</td><td>−4.6</td><td>44.0″</td></tr>
+    </table>
+  </div>
+
+  <!-- 5. 상세 표 (접힘) -->
+  <div class="card" style="padding-top:0"><div class="fold"><span>시간별 상세 표</span><span>펼치기 ▾</span></div></div>
+
+  <footer>
+    기상: Open-Meteo (CC BY 4.0) · 시상 대조: 7Timer · 천체 계산: astronomy-engine<br>
+    시상 값은 공개 예보로 계산한 추정치입니다. · meteoblue 원본 보기 ↗
+  </footer>
+</div>
+</body>
+</html>

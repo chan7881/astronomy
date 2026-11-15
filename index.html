@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#05080f">
+<meta name="description" content="천문 관측 예보 — 구름·시상·제트기류와 오늘 밤 천체 고도">
+<title>천문 관측 예보</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="place-name">포항</h1>
+    <button type="button" class="btn" id="btn-search">검색</button>
+    <button type="button" class="btn" id="btn-gps">위치</button>
+    <button type="button" class="btn" id="btn-fav" aria-pressed="false">저장</button>
+    <button type="button" class="btn red" id="btn-red" aria-pressed="false">적색</button>
+    <div id="place-sub"></div>
+  </header>
+
+  <nav class="days" id="days" aria-label="날짜"></nav>
+
+  <section class="card" id="error-card" hidden>
+    <h2>알림</h2>
+    <p id="error-text"></p>
+    <button type="button" class="btn" id="btn-retry">다시 시도</button>
+  </section>
+
+  <section class="card" id="verdict-card" hidden>
+    <h2 id="verdict-title">오늘 밤 판정</h2>
+    <div class="verdict">
+      <div class="score" id="score"><div><b id="score-num"></b><span>관측 점수</span></div></div>
+      <ul class="brief" id="brief"></ul>
+    </div>
+    <div class="chips" id="chips"></div>
+  </section>
+
+  <section class="card">
+    <h2>밤하늘</h2>
+    <div class="sun" id="sunline"></div>
+    <div class="plot" id="alt-chart"></div>
+    <div class="read" id="sky-read"></div>
+    <div class="legend" id="legend"></div>
+    <div class="moonline" id="moonline"></div>
+  </section>
+
+  <section class="card" id="weather-card" hidden>
+    <h2>관측 기상</h2>
+    <div class="plot" id="band-chart"></div>
+    <div class="read" id="wx-read"></div>
+    <div class="key-row">
+      <span>구름 <i class="k cbase"></i>0% <i class="k c50"></i>50% <i class="k c100"></i>100%</span>
+      <span><i class="k g-g"></i>● 좋음 <i class="k g-m"></i>▲ 보통 <i class="k g-b"></i>■ 나쁨</span>
+      <span>제트·바람 m/s · 기온·이슬차 ℃ · 투명 = 에어로졸 광학 두께</span>
+    </div>
+    <details>
+      <summary>시간별 상세 표</summary>
+      <table class="detail">
+        <thead><tr><th>시</th><th>하</th><th>중</th><th>상</th><th>시상″</th><th>지수</th><th>제트</th><th>불량층km</th><th>K/100m</th><th>℃</th><th>습도</th></tr></thead>
+        <tbody id="detail-body"></tbody>
+      </table>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>천체 제원</h2>
+    <table class="bodies">
+      <thead><tr><th>천체</th><th>뜸</th><th>남중</th><th>짐</th><th>등급</th><th>시직경</th></tr></thead>
+      <tbody id="body-rows"></tbody>
+    </table>
+  </section>
+
+  <footer>
+    기상 <a href="https://open-meteo.com/" rel="noopener">Open-Meteo</a> (CC BY 4.0) · 천체 계산 <a href="https://github.com/cosinekitty/astronomy" rel="noopener">astronomy-engine</a><br>
+    시상·관측 점수는 공개 예보로 계산한 추정치 · <a id="meteoblue" href="https://www.meteoblue.com/en/weather/outdoorsports/seeing/" rel="noopener">meteoblue 원본</a>
+  </footer>
+</div>
+
+<dialog id="dlg" aria-label="관측지 선택">
+  <form id="search-form">
+    <input id="q" type="search" placeholder="지명" autocomplete="off" aria-label="지명">
+    <button type="submit" class="btn">찾기</button>
+    <button type="button" class="btn" id="btn-close">닫기</button>
+  </form>
+  <ul class="places" id="results"></ul>
+  <h3>저장한 관측지</h3>
+  <ul class="places" id="fav-list"></ul>
+</dialog>
+
+<script src="vendor/astronomy.browser.min.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
