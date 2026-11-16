@@ -234,7 +234,7 @@ test('묶음: 가짜 Scriptable에서 모든 크기·종류가 오류 없이 위
   const { code } = bundle();
   const now = Date.now(), start = new Date(now + KST - 36 * 3600e3).toISOString().slice(0, 13) + ':00';
   let { fc, air } = fakeForecast(start, 24 * 7);
-  const cases = [...Object.entries(KINDS).map(([k, f]) => [f, k]), ['small', null], ['extraLarge', '천체'], ['large', '기상 | 유리'], ['small', '유리'],
+  const cases = [...Object.entries(KINDS).map(([k, f]) => [f, k]), ['small', null], ['extraLarge', '천체'], ['large', '기상 | 유리'], ['large', '기상 | 진단'], ['small', '유리'],
     ['accessoryInline', null], ['accessoryRectangular', null], ['accessoryCircular', null], ['accessoryCircular', '달']];
   const runCase = async (family, param, src) => {
     const log = { calls: [], widget: null, requests: [], files: {} };
