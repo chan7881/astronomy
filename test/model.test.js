@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as M from '../js/model.js';
+import * as A from '../js/api.js';
 
 // 표준 대기 비슷한 기압면 묶음. lapse(K/km)와 바람을 바꿔 가며 쓴다.
 const P = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200];
@@ -125,6 +126,19 @@ test('밤 요약: 주의 항목', () => {
 test('달 위상 이름', () => {
   assert.deepEqual([0, 45, 90, 135, 180, 225, 270, 315, 358].map(M.moonPhaseName),
     ['삭', '초승달', '상현달', '차오르는 달', '보름달', '기우는 달', '하현달', '그믐달', '삭']);
+});
+
+test('시상 보정: 자유대기는 Dewan 값에 파라날 배율 0.85를 곱해 줄이고, 지표층 식은 그대로', () => {
+  const lv = column({ wind: z => 5 + z / 400 });
+  const raw = M.dewanSeeing(lv);
+  assert.equal(M.FREE_SCALE, 0.85);
+  near(raw, 0.69824, 1e-5);                    // Dewan 식 자체가 바뀌면 여기서 걸린다
+  near(M.freeSeeing(lv), 0.59351, 1e-5);
+  near(M.seeing(lv, 0), Math.pow(0.59351 ** (5 / 3) + 0.5 ** (5 / 3), 3 / 5), 1e-5);   // 배율은 한 번만
+  assert.deepEqual(A.LEVELS, M.FREE_SCALE_LEVELS);   // 사이트가 받는 기압면 = 배율을 맞춘 기압면
+  assert.ok(M.freeSeeing(lv) < raw);
+  assert.equal(M.freeSeeing([]), null);
+  near(M.groundSeeing(10), 1.1, 1e-12);
 });
 
 test('시직경·방위', () => {

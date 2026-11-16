@@ -75,8 +75,9 @@ export function jetSpeed(levels) {
  *   Cn² = 2.8 M² L0^(4/3),  M = -(79e-6 P/T) ∂lnθ/∂z
  *   L0^(4/3) = 0.1^(4/3)·10^(1.64+42S) (대류권) / 10^(0.506+50S) (성층권),  S = 바람 시어(1/s)
  *   r0 = (0.423 k² ∫Cn² dz)^(-3/5),  시상 = 0.98 λ / r0
+ * 보정 전 값. 화면에는 FREE_SCALE을 곱한 freeSeeing을 쓴다.
  */
-export function freeSeeing(levels, elev = 0) {
+export function dewanSeeing(levels, elev = 0) {
   let integral = 0;
   const ls = layers(levels, elev);
   if (ls.length < 3) return null;   // 상층 자료가 없으면 「좋음」이 아니라 「모름」
@@ -94,7 +95,26 @@ export function freeSeeing(levels, elev = 0) {
   return 0.98 * LAMBDA / r0 * RAD2ARCSEC;
 }
 
-/** 지표층 시상(″) — 지상풍이 셀수록 나빠지는 경험식(보정 대상) */
+/**
+ * 자유대기 시상 보정 배율 — ESO 파라날 MASS 관측(2023년 3,233시간)에 맞춘 값.
+ * 12개 기압면에서 계산한 Dewan 값은 관측보다 약 18% 크게 나온다(2024년 검증: 치우침 +0.10″ → +0.02″).
+ * 기압면을 바꾸면 다시 맞춰야 한다(27개 면에서는 0.74~0.77) — api.js LEVELS가 아래와 다르면 테스트가 실패한다.
+ * 다시 맞추는 법: docs/시상보정.md · tools/seeing/
+ */
+export const FREE_SCALE = 0.85;
+export const FREE_SCALE_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100];
+
+/** 자유대기 시상(″) — 보정한 값 */
+export function freeSeeing(levels, elev = 0) {
+  const s = dewanSeeing(levels, elev);
+  return s == null ? null : s * FREE_SCALE;
+}
+
+/**
+ * 지표층 시상(″) — 지상풍이 셀수록 나빠지는 경험식.
+ * 파라날에서 맞춘 값(0.48 + 0.066×풍속)과 거의 같아 그대로 둔다. 다만 파라날 관측기는 높은 산 위 탑에 있어
+ * 낮은 관측지의 지표층은 이보다 클 수 있다(맞출 관측 자료 없음).
+ */
 export function groundSeeing(wind10) {
   return 0.5 + 0.06 * Math.max(0, wind10 || 0);
 }
