@@ -1,12 +1,13 @@
 import * as M from './model.js';
-import { makeSky, BODIES } from './sky.js';
+import { makeSky } from './sky.js';
 import { loadForecast, searchPlace } from './api.js';
 import * as C from './charts.js';
 import * as P from './places.js';
+import * as V from './view.js';
 
 const sky = makeSky(window.Astronomy);
 const $ = id => document.getElementById(id);
-const H = 3600e3, DAY = 86400e3, NIGHTS = 5;
+const DAY = 86400e3, NIGHTS = 5;
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const SHAPE = { g: '●', m: '▲', b: '■' };
 
@@ -14,63 +15,24 @@ const state = { place: P.loadPlace(), idx: 0, outer: false, data: null, error: n
 
 // ── 시각 표기(관측지 시간대) ──────────────────────────────
 const offMs = () => (state.data ? state.data.offsetSec * 1000 : -new Date().getTimezoneOffset() * 60e3);
-const local = t => new Date(t + offMs());
-const hm = t => (t == null ? '–' : local(t).toISOString().slice(11, 16));
-const hh = t => String(local(t).getUTCHours()).padStart(2, '0');
+const local = t => V.clock(offMs()).local(t);
+const hm = t => V.clock(offMs()).hm(t);
+const hh = t => V.clock(offMs()).hh(t);
 const sign = v => (v < 0 ? '−' : '') + Math.abs(v).toFixed(1);
 const fx = (v, d = 0) => (Number.isFinite(v) ? v.toFixed(d) : '–');
 const tag = g => (g ? `<span class="tag t-${g}">${SHAPE[g]} ${M.GRADE_KO[g]}</span>` : '');
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-/** 밤 번호 0의 현지 정오. 아침 8시 전에는 지난밤을 「오늘 밤」으로 본다. */
-function baseNoon() {
-  const d = new Date(Date.now() + offMs() - 8 * H);
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12) - offMs();
-}
+const baseNoon = () => V.baseNoon(Date.now(), offMs());
 
 // ── 자료 조립 ────────────────────────────────────────────
 function buildView() {
-  const place = state.place, noon = baseNoon() + state.idx * DAY;
-  const night = sky.night(place, noon);
-  const t0 = (night.sunset ?? noon + 6 * H) - 20 * 60e3, t1 = (night.sunrise ?? noon + 18 * H) + 20 * 60e3;
-  const sc = C.scale(t0, t1);
-  const bodies = BODIES.filter(b => state.outer || !b.outer);
-  const tracks = bodies.map(b => ({ ...b, pts: sky.track(b.id, place, t0, t1, 10) }));
-  const mid = (t0 + t1) / 2;
-  const table = bodies.map(b => ({ ...b, ...sky.events(b.id, place, noon), ...sky.facts(b.id, place, mid) }));
-  const moon = sky.moon(mid), moonEv = table.find(b => b.id === 'Moon');
-
-  const elev = state.data?.elev ?? place.elev ?? 0;
-  const hours = (state.data?.hours ?? []).filter(h => h.t >= t0 - H / 2 && h.t <= t1 + H / 2).map(h => {
-    const see = M.seeing(h.levels, h.wind10, elev);
-    const mAlt = sky.altAz('Moon', place, h.t).alt;
-    const x = { ...h, seeing: see, index: M.seeingIndex(see), jet: M.jetSpeed(h.levels), bad: M.badLayer(h.levels, elev), spread: M.spread(h.temp, h.dew), moonAlt: mAlt, moonFrac: moon.frac };
-    x.score = M.hourScore(x);
-    return x;
-  });
-  const darkFrom = night.astroEnd ?? night.sunset ?? t0, darkTo = night.astroStart ?? night.sunrise ?? t1;
-  const dark = hours.filter(h => h.t >= darkFrom && h.t <= darkTo);
-  return { noon, night, sc, tracks, table, moon, moonEv, hours, dark, summary: M.nightSummary(dark), darkFrom, darkTo };
+  const v = V.nightView(sky, state.place, state.data, baseNoon() + state.idx * DAY, { outer: state.outer });
+  return { ...v, sc: C.scale(v.t0, v.t1) };
 }
 
-function moonLine(v) {
-  const { moon, moonEv, night } = v, a = night.sunset, b = night.sunrise;
-  const within = t => t != null && a != null && b != null && t > a && t < b;
-  const ev = within(moonEv.set) ? `${hm(moonEv.set)} 짐` : within(moonEv.rise) ? `${hm(moonEv.rise)} 뜸`
-    : sky.altAz('Moon', state.place, (v.darkFrom + v.darkTo) / 2).alt > 0 ? '밤새 떠 있음' : '밤새 없음';
-  return `${Math.round(moon.frac * 100)}% ${moon.name} · ${ev}`;
-}
-
-function cloudLine(n) {
-  if (!n) return '–';
-  switch (n.kind) {
-    case 'clear': return '밤새 맑음';
-    case 'overcast': return '밤새 흐림';
-    case 'in': return `${hh(n.t)}시부터 ${n.layer} 유입`;
-    case 'out': return `${hh(n.t)}시부터 갬`;
-    default: return `평균 ${Math.round(n.avg)}%`;
-  }
-}
+const moonLine = v => V.moonLine(sky, state.place, v, hm);
+const cloudLine = n => V.cloudLine(n, hh);
 
 // ── 그리기 ───────────────────────────────────────────────
 function render() {

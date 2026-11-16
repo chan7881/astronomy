@@ -77,6 +77,9 @@ ${labels.join('')}
 
 const clampN = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
+/** 구름 칸 숫자는 이 값(%)부터 어두운 글자로 바꾼다 — 칸이 밝아져 밝은 글자의 대비가 4:1 아래로 내려가는 지점 */
+export const CLOUD_INK_FLIP = 40;
+
 /**
  * 기상 띠. rows: [{label, kind:'cloud'|'grade'|'plain', value(h), text?(h), grade?(v)}]
  * hours: [{t, ...}] — 각 칸은 그 시각 앞뒤 30분.
@@ -96,6 +99,7 @@ export function bandChart({ sc, hours, rows, offsetSec }) {
       let rect, txt = '';
       if (r.kind === 'cloud') {
         rect = `<rect class="cell cbase" x="${n1(x0)}" y="${top}" width="${n1(w)}" height="${RH}"/><rect class="cell cloud" x="${n1(x0)}" y="${top}" width="${n1(w)}" height="${RH}" fill-opacity="${(clampN(v, 0, 100) / 100).toFixed(2)}"/>`;
+        if (w >= 19) txt = `<text class="v cv${Math.round(v) >= CLOUD_INK_FLIP ? ' hi' : ''}" x="${n1(x0 + w / 2)}" y="${top + 16}">${Math.round(v)}</text>`;
       } else {
         const g = r.kind === 'grade' ? r.grade(v) : 'p';
         rect = `<rect class="cell g-${g}" x="${n1(x0)}" y="${top}" width="${n1(w)}" height="${RH}"/>`;

@@ -2,5 +2,5 @@
   "name": "astronomy",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test" }
+  "scripts": { "test": "node --test", "build:widget": "node widget/build.mjs" }
 }

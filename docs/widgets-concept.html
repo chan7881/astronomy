@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>위젯 시안</title>
+<style>
+:root {
+  --bg: #05080f; --card: #0c1220; --band: #131b2e; --line: #27314a; --edge: #33405f;
+  --ink: #eef2fa; --ink2: #aab4cb; --ink3: #8592b0;
+  --good: #3fb68b; --mid: #d6a740; --bad: #e0685c;
+  --g-g: #1d4d42; --g-m: #574a22; --g-b: #5c2b2a; --cloud: #e2e8f4; --cbase: #1a2440;
+  --tw0: #3b4a72; --tw1: #2c3960; --tw2: #202b4d; --tw3: #161f3b; --tw4: #0a1022;
+  --b-Moon: #d5dae3; --b-Mars: #ef6f62; --b-Jupiter: #dd9a5e; --b-Saturn: #e8c95a; --b-Uranus: #5fd0c8;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #000; color: var(--ink); font: 500 13px/1.35 "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }
+.page { width: 390px; margin: 0 auto; padding: 14px 26px 30px; }
+h1 { font-size: 13px; font-weight: 800; letter-spacing: .08em; color: var(--ink3); margin: 22px 0 10px; border-bottom: 1px solid var(--line); padding-bottom: 5px; }
+h1:first-child { margin-top: 0; }
+.row { display: flex; gap: 22px; margin-bottom: 8px; }
+.cap { font-size: 11px; color: var(--ink3); margin: 0 0 16px; display: flex; gap: 22px; }
+.cap span { width: 158px; } .cap span.wide { width: 338px; }
+
+.w { background: var(--card); border: 1px solid var(--edge); border-radius: 22px; overflow: hidden; color: var(--ink); display: flex; flex-direction: column; }
+.S { width: 158px; height: 158px; } .M { width: 338px; height: 158px; } .L { width: 338px; height: 354px; }
+.hd { background: var(--band); border-bottom: 1px solid var(--edge); padding: 7px 14px 6px; font-size: 11px; font-weight: 800; letter-spacing: .08em; display: flex; justify-content: space-between; flex: none; }
+.hd i { font-style: normal; font-weight: 500; letter-spacing: 0; color: var(--ink3); }
+.bd { padding: 9px 14px 11px; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+.g { color: var(--good); } .m { color: var(--mid); } .b { color: var(--bad); }
+.score { border: 2px solid var(--ink3); border-left-width: 6px; border-radius: 10px; display: grid; place-items: center; text-align: center; flex: none; }
+.score.g { border-color: var(--good); } .score.m { border-color: var(--mid); } .score.b { border-color: var(--bad); }
+.score b { color: var(--ink); line-height: 1; display: block; }
+.score span { font-size: 11px; font-weight: 700; }
+.kv { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+.kv li { display: grid; grid-template-columns: 36px 1fr; gap: 6px; padding: 3px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.kv li:last-child { border-bottom: 0; }
+.kv span { color: var(--ink3); font-weight: 700; }
+.big { font-size: 30px; font-weight: 900; line-height: 1.05; }
+.big small { font-size: 13px; font-weight: 700; margin-left: 4px; }
+.sub { font-size: 11px; color: var(--ink2); }
+
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+th { color: var(--ink3); font-size: 10.5px; font-weight: 700; text-align: right; padding: 0 0 4px; }
+td { text-align: right; padding: 0; border-top: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+td:first-child { font-weight: 800; }
+.L table { flex: 1; }
+.dim { color: var(--ink3); }
+svg { display: block; }
+svg text { font-family: inherit; }
+
+.lock { background: linear-gradient(160deg, #1b2440, #070b16); border-radius: 22px; padding: 16px 14px; display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+.lw { background: rgba(255,255,255,.14); color: #fff; }
+.circ { width: 66px; height: 66px; border-radius: 50%; display: grid; place-items: center; flex: none; position: relative; }
+.rect { flex: 1; height: 66px; border-radius: 14px; padding: 7px 11px; font-size: 12px; line-height: 1.42; white-space: nowrap; }
+.rect b { font-size: 13px; }
+.inline { color: #fff; font-size: 13px; font-weight: 700; text-align: center; padding: 2px 0 10px; }
+
+/* ?art — 폰 화면에 올린 모습 */
+body.art { background: #0b0d12; }
+body.art .page { width: 980px; padding: 40px 40px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 36px 60px; justify-items: center; }
+.phone { width: 414px; }
+.screen { position: relative; width: 414px; height: 868px; border: 12px solid #1c1d22; border-radius: 62px; overflow: hidden; box-shadow: 0 0 0 2px #3a3c44, 0 30px 60px rgba(0,0,0,.6);
+  background:
+    radial-gradient(1.2px 1.2px at 12% 9%, #fff 99%, transparent), radial-gradient(1px 1px at 31% 22%, #cfd8ff 99%, transparent), radial-gradient(1.4px 1.4px at 78% 13%, #fff 99%, transparent),
+    radial-gradient(1px 1px at 64% 31%, #fff 99%, transparent), radial-gradient(1.2px 1.2px at 88% 44%, #dfe6ff 99%, transparent), radial-gradient(1px 1px at 8% 52%, #fff 99%, transparent),
+    radial-gradient(1.3px 1.3px at 45% 61%, #fff 99%, transparent), radial-gradient(1px 1px at 22% 74%, #cfd8ff 99%, transparent), radial-gradient(1.2px 1.2px at 71% 68%, #fff 99%, transparent),
+    radial-gradient(1px 1px at 55% 8%, #fff 99%, transparent), radial-gradient(1px 1px at 93% 82%, #fff 99%, transparent), radial-gradient(1.2px 1.2px at 37% 43%, #fff 99%, transparent),
+    radial-gradient(120% 45% at 50% 108%, #3a3466 0%, #1a2146 45%, transparent 75%), linear-gradient(180deg, #03050c 0%, #0a1230 60%, #141a3c 100%); }
+.screen.black { background: #000; }
+.island { position: absolute; top: 11px; left: 50%; width: 118px; height: 34px; margin-left: -59px; border-radius: 20px; background: #000; }
+.status { position: absolute; top: 17px; left: 34px; right: 30px; display: flex; justify-content: space-between; align-items: center; color: #fff; font-size: 16px; font-weight: 800; }
+.batt { width: 25px; height: 12px; border: 1.5px solid #fff; border-radius: 4px; padding: 1.5px; opacity: .9; } .batt::before { content: ''; display: block; width: 70%; height: 100%; background: #fff; border-radius: 1.5px; }
+.grid { position: absolute; top: 70px; left: 26px; width: 338px; display: flex; flex-wrap: wrap; gap: 22px; }
+.icons { width: 338px; display: flex; justify-content: space-between; }
+.ic { width: 60px; text-align: center; color: #fff; font-size: 11px; white-space: nowrap; }
+.ic i { display: block; width: 60px; height: 60px; border-radius: 14px; background: rgba(255,255,255,.15); margin-bottom: 5px; overflow: hidden; }
+.dock { position: absolute; left: 12px; right: 12px; bottom: 12px; height: 88px; border-radius: 34px; background: rgba(255,255,255,.13); display: flex; justify-content: space-around; align-items: center; padding: 0 12px; }
+.dock i { width: 60px; height: 60px; border-radius: 14px; background: rgba(255,255,255,.17); }
+.dots { position: absolute; bottom: 112px; left: 0; right: 0; text-align: center; color: rgba(255,255,255,.35); font-size: 9px; letter-spacing: 5px; } .dots b { color: #fff; }
+.pcap { text-align: center; color: var(--ink2); font-size: 15px; font-weight: 700; margin-top: 14px; }
+.clock { width: 338px; text-align: center; color: #fff; font-size: 104px; font-weight: 800; line-height: 1; letter-spacing: -2px; margin: -14px 0 -4px; }
+.lockgrid { top: 84px; gap: 10px; } .lockgrid .inline { width: 338px; padding: 0; font-size: 15px; } .lockgrid .lock { width: 338px; background: none; padding: 0; margin: 0; }
+.home { position: absolute; bottom: 8px; left: 50%; width: 136px; height: 5px; margin-left: -68px; border-radius: 3px; background: #fff; opacity: .85; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>작은 위젯</h1>
+<div class="row">
+  <div class="w S">
+    <div class="hd">오늘 밤 <i>포항</i></div>
+    <div class="bd" style="gap:7px">
+      <div style="display:flex;gap:10px;align-items:center">
+        <div class="score g" style="width:62px;height:54px"><div><b style="font-size:28px">72</b></div></div>
+        <div><b class="g" style="font-size:15px">● 좋음</b><div class="sub">관측 점수</div></div>
+      </div>
+      <ul class="kv">
+        <li><span>최적</span>23–04시</li>
+        <li><span>구름</span>18%</li>
+      </ul>
+    </div>
+  </div>
+  <div class="w S">
+    <div class="hd">달 <i>월령 7.4</i></div>
+    <div class="bd" style="gap:7px">
+      <div style="display:flex;gap:10px;align-items:center">
+        <svg width="54" height="54" viewBox="-27 -27 54 54"><circle r="25" fill="var(--band)" stroke="var(--edge)"/><path d="M0-25A25 25 0 0 1 0 25A1.5 25 0 0 1 0-25" fill="var(--b-Moon)"/></svg>
+        <div><b style="font-size:15px">상현달</b><div class="sub">밝은 면 49%</div></div>
+      </div>
+      <ul class="kv">
+        <li><span>뜸</span>12:48</li>
+        <li><span>짐</span>23:41</li>
+      </ul>
+    </div>
+  </div>
+</div>
+<div class="cap"><span>S1 관측 점수</span><span>S2 달</span></div>
+
+<div class="row">
+  <div class="w S">
+    <div class="hd">대기 <i>포항</i></div>
+    <div class="bd">
+      <div class="big">1.5<small>″</small> <small class="m">▲ 보통</small></div>
+      <div class="sub" style="margin-bottom:5px">시상 평균</div>
+      <ul class="kv">
+        <li><span>제트</span><div>22m/s <b class="m">▲</b></div></li>
+        <li><span>이슬</span><div>1.4° <b class="b">■ 결로</b></div></li>
+      </ul>
+    </div>
+  </div>
+  <div class="w S">
+    <div class="hd">지금 <i>21:10</i></div>
+    <div class="bd">
+      <div class="big" style="color:var(--b-Saturn)">토성</div>
+      <div class="sub" style="margin-bottom:5px">0.9등급 · 물고기자리</div>
+      <ul class="kv">
+        <li><span>고도</span>56° 남</li>
+        <li><span>짐</span>02:34</li>
+      </ul>
+    </div>
+  </div>
+</div>
+<div class="cap"><span>S3 대기(시상·제트·이슬)</span><span>S4 지금 가장 높은 천체</span></div>
+
+<h1>중간 위젯</h1>
+<div class="w M">
+  <div class="hd">오늘 밤 판정 <i>포항 · 11.16 월</i></div>
+  <div class="bd" style="flex-direction:row;gap:14px;align-items:center">
+    <div class="score g" style="width:86px;height:94px"><div><b style="font-size:36px">72</b><span class="g">● 좋음</span></div></div>
+    <ul class="kv" style="flex:1">
+      <li><span>최적</span>23:00–04:00</li>
+      <li><span>달</span>상현달 · 23:41 짐</li>
+      <li><span>구름</span>평균 18% · 자정 뒤 맑음</li>
+      <li><span>주의</span><b class="b">■ 결로</b></li>
+    </ul>
+  </div>
+</div>
+<div class="cap"><span class="wide">M1 판정</span></div>
+
+<div class="w M">
+  <div class="hd">밤하늘 <i>포항 · 11.16 월</i></div>
+  <div class="bd" style="padding:6px 8px 4px"><svg id="alt-m" width="320" height="112"></svg></div>
+</div>
+<div class="cap"><span class="wide">M2 고도 곡선</span></div>
+
+<div class="w M">
+  <div class="hd">5일 밤 <i>포항</i></div>
+  <div class="bd" style="padding:6px 10px 6px"><svg id="days" width="316" height="112"></svg></div>
+</div>
+<div class="cap"><span class="wide">M3 5일 관측 점수</span></div>
+
+<div class="w M">
+  <div class="hd">시간별 <i>포항 · 11.16 월</i></div>
+  <div class="bd" style="padding:6px 8px 4px"><svg id="band-m" width="320" height="112"></svg></div>
+</div>
+<div class="cap"><span class="wide">M4 시간별 기상 띠</span></div>
+
+<h1>큰 위젯</h1>
+<div class="w L">
+  <div class="hd">오늘 밤 <i>포항 · 11.16 월</i></div>
+  <div class="bd" style="padding:9px 8px 4px;gap:6px">
+    <div style="display:flex;gap:12px;align-items:center;padding:0 6px">
+      <div class="score g" style="width:70px;height:62px"><div><b style="font-size:28px">72</b><span class="g">● 좋음</span></div></div>
+      <ul class="kv" style="flex:1">
+        <li><span>최적</span>23:00–04:00</li>
+        <li><span>달</span>상현달 · 23:41 짐</li>
+        <li><span>주의</span><b class="b">■ 결로</b></li>
+      </ul>
+    </div>
+    <svg id="alt-l" width="320" height="124"></svg>
+    <svg id="band-l" width="320" height="112"></svg>
+  </div>
+</div>
+<div class="cap"><span class="wide">L1 종합(판정 + 고도 곡선 + 기상 띠)</span></div>
+
+<div class="w L">
+  <div class="hd">천체 <i>포항 · 11.16 월</i></div>
+  <div class="bd"><table id="bodies"></table></div>
+</div>
+<div class="cap"><span class="wide">L2 천체 출몰표</span></div>
+
+<div class="w L">
+  <div class="hd">5일 예보 <i>포항</i></div>
+  <div class="bd"><table id="five"></table></div>
+</div>
+<div class="cap"><span class="wide">L3 5일 예보표</span></div>
+
+<h1>잠금 화면</h1>
+<div class="lock">
+  <div class="circ lw">
+    <svg width="66" height="66" viewBox="-33 -33 66 66" style="position:absolute"><circle r="28" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="5"/><circle r="28" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-dasharray="126.7 176" transform="rotate(-90)"/></svg>
+    <div style="text-align:center;line-height:1"><b style="font-size:20px">72</b><div style="font-size:9px;margin-top:2px">관측</div></div>
+  </div>
+  <div class="circ lw">
+    <svg width="40" height="40" viewBox="-27 -27 54 54"><circle r="25" fill="none" stroke="#fff" stroke-width="2"/><path d="M0-25A25 25 0 0 1 0 25A1.5 25 0 0 1 0-25" fill="#fff"/></svg>
+  </div>
+  <div class="rect lw"><b>관측 72 · 좋음</b><br>최적 23–04시<br>구름 18% · 결로 주의</div>
+</div>
+<div class="inline">관측 72 · 23–04시 · 구름 18%</div>
+<div class="cap"><span class="wide">원형 2종(점수·달) · 사각형 · 날짜 줄</span></div>
+
+</div>
+<script>
+const NS = 'http://www.w3.org/2000/svg';
+const el = (p, tag, at = {}, txt) => { const e = document.createElementNS(NS, tag); for (const k in at) e.setAttribute(k, at[k]); if (txt != null) e.textContent = txt; p.appendChild(e); return e; };
+const T0 = 17, T1 = 31;                       // 17시 ~ 다음 날 07시
+const hh = h => String(h % 24).padStart(2, '0');
+
+// 고도 곡선
+const TW = [[17, 17.23, 'tw0'], [17.23, 17.68, 'tw1'], [17.68, 18.2, 'tw2'], [18.2, 18.7, 'tw3'], [18.7, 29.5, 'tw4'], [29.5, 30, 'tw3'], [30, 30.52, 'tw2'], [30.52, 30.97, 'tw1'], [30.97, 31, 'tw0']];
+const BODIES = [['달', 'Moon', 18.27, -16], ['토성', 'Saturn', 20.68, 3], ['천왕성', 'Uranus', 24.33, 20, '10 3 2 3'], ['목성', 'Jupiter', 29.83, 14, '7 4', 27.2, -5], ['화성', 'Mars', 30.33, 10, null, 29.3, 13]];
+const rad = Math.PI / 180, LAT = 36.02;
+const altAt = (t, tr, dec) => Math.asin(Math.sin(LAT * rad) * Math.sin(dec * rad) + Math.cos(LAT * rad) * Math.cos(dec * rad) * Math.cos((t - tr) * 15.04 * rad)) / rad;
+function altChart(id) {
+  const s = document.getElementById(id), W = +s.getAttribute('width'), H = +s.getAttribute('height');
+  const gx = 22, ph = H - 16, x = t => gx + (t - T0) / (T1 - T0) * (W - gx - 4), y = a => ph - a / 90 * (ph - 6);
+  TW.forEach(([a, b, c]) => el(s, 'rect', { x: x(a), y: 0, width: x(b) - x(a), height: ph, fill: `var(--${c})` }));
+  [30, 60].forEach(a => { el(s, 'line', { x1: gx, x2: W - 4, y1: y(a), y2: y(a), stroke: 'var(--line)' }); el(s, 'text', { x: gx - 4, y: y(a) + 3, 'text-anchor': 'end', 'font-size': 9, fill: 'var(--ink3)' }, a + '°'); });
+  el(s, 'line', { x1: gx, x2: W - 4, y1: ph, y2: ph, stroke: 'var(--edge)' });
+  for (let h = 18; h <= 30; h += 3) el(s, 'text', { x: x(h), y: H - 3, 'text-anchor': 'middle', 'font-size': 9, fill: 'var(--ink3)' }, hh(h));
+  BODIES.forEach(([ko, id, tr, dec, dash, lt, ldy]) => {
+    let d = '', best = [-1, 0];
+    for (let t = T0; t <= T1 + 1e-9; t += 0.1) { const a = altAt(t, tr, dec); if (a < 0) continue; d += (d && altAt(t - 0.1, tr, dec) >= 0 ? 'L' : 'M') + x(t).toFixed(1) + ' ' + y(a).toFixed(1); if (a > best[0]) best = [a, t]; }
+    el(s, 'path', { d, fill: 'none', stroke: `var(--b-${id})`, 'stroke-width': 1.8, ...(dash ? { 'stroke-dasharray': dash } : {}) });
+    if (lt) best = [altAt(lt, tr, dec), lt];
+    const tx = Math.min(Math.max(x(best[1]), gx + 16), W - 20);
+    el(s, 'text', { x: tx, y: Math.max(9, y(best[0]) + (ldy ?? -4)), 'text-anchor': 'middle', 'font-size': 10, 'font-weight': 700, fill: `var(--b-${id})` }, ko);
+  });
+  el(s, 'line', { x1: x(21.17), x2: x(21.17), y1: 0, y2: ph, stroke: 'var(--ink)', 'stroke-width': 1 });
+}
+altChart('alt-m'); altChart('alt-l');
+
+// 기상 띠 (18~05시)
+const ROWS = [
+  ['구름', [35, 30, 20, 15, 10, 10, 10, 5, 10, 15, 20, 30], null, v => v],
+  ['시상', [1.8, 1.7, 1.5, 1.4, 1.4, 1.3, 1.3, 1.4, 1.4, 1.5, 1.6, 1.7], v => v < 1.5 ? 'g' : v < 2.2 ? 'm' : 'b', v => v.toFixed(1)],
+  ['제트', [22, 21, 20, 19, 18, 18, 17, 17, 18, 18, 19, 20], v => v <= 20 ? 'g' : v <= 30 ? 'm' : 'b', v => v],
+  ['이슬', [5, 4.5, 4, 3.5, 3, 2.5, 2, 1.8, 1.6, 1.5, 1.5, 1.4], v => v >= 4 ? 'g' : v >= 2 ? 'm' : 'b', v => v.toFixed(1)],
+];
+const MARK = { g: '', m: '▲', b: '■' };
+function bandChart(id) {
+  const s = document.getElementById(id), W = +s.getAttribute('width'), H = +s.getAttribute('height');
+  const gx = 30, cw = (W - gx - 4) / 12, rh = (H - 14) / 4;
+  ROWS.forEach(([name, vals, grade, fmt], r) => {
+    el(s, 'text', { x: 4, y: r * rh + rh / 2 + 3.5, 'font-size': 10, 'font-weight': 700, fill: 'var(--ink3)' }, name);
+    vals.forEach((v, i) => {
+      const g = grade ? grade(v) : null, box = { x: gx + i * cw + .5, y: r * rh + .5, width: cw - 1, height: rh - 1, rx: 3 };
+      el(s, 'rect', { ...box, fill: g ? `var(--g-${g})` : 'var(--cbase)' });
+      if (!g) el(s, 'rect', { ...box, fill: 'var(--cloud)', 'fill-opacity': v / 100 });
+      el(s, 'text', { x: gx + i * cw + cw / 2, y: r * rh + rh / 2 + 3.5, 'text-anchor': 'middle', 'font-size': 9.5, fill: g || v < 40 ? 'var(--ink)' : 'var(--bg)' }, fmt(v));
+      if (g && MARK[g]) el(s, 'text', { x: gx + i * cw + cw - 3, y: r * rh + 7, 'text-anchor': 'end', 'font-size': 5.5, fill: `var(--${g === 'm' ? 'mid' : 'bad'})` }, MARK[g]);
+    });
+  });
+  for (let i = 0; i < 12; i += 1) el(s, 'text', { x: gx + i * cw + cw / 2, y: H - 3, 'text-anchor': 'middle', 'font-size': 9, fill: 'var(--ink3)' }, hh(18 + i));
+}
+bandChart('band-m'); bandChart('band-l');
+
+// 5일 점수
+const DAYS = [['월', 16, 72, 18, 1.5, 22, 49, '23–04시'], ['화', 17, 58, 34, 1.7, 26, 60, '00–04시'], ['수', 18, 31, 71, 2.3, 34, 71, '—'], ['목', 19, 44, 52, 1.9, 28, 81, '02–05시'], ['금', 20, 81, 8, 1.2, 16, 89, '03–05시']];
+const gS = v => v >= 70 ? 'g' : v >= 40 ? 'm' : 'b', COL = { g: 'good', m: 'mid', b: 'bad' }, SHAPE = { g: '●', m: '▲', b: '■' }, KO = { g: '좋음', m: '보통', b: '나쁨' };
+(() => {
+  const s = document.getElementById('days'), W = 316, H = 112, cw = W / 5, base = 78, top = 16;
+  DAYS.forEach(([d, n, v], i) => {
+    const g = gS(v), cx = i * cw + cw / 2, bh = v / 100 * (base - top);
+    el(s, 'rect', { x: cx - 15, y: top, width: 30, height: base - top, rx: 4, fill: 'var(--band)' });
+    el(s, 'rect', { x: cx - 15, y: base - bh, width: 30, height: bh, rx: 4, fill: `var(--${COL[g]})` });
+    el(s, 'text', { x: cx, y: base - bh - 4 < top + 8 ? base - bh + 13 : base - bh - 4, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 900, fill: 'var(--ink)' }, v);
+    el(s, 'text', { x: cx, y: 93, 'text-anchor': 'middle', 'font-size': 10, 'font-weight': 700, fill: `var(--${COL[g]})` }, SHAPE[g] + ' ' + KO[g]);
+    el(s, 'text', { x: cx, y: 108, 'text-anchor': 'middle', 'font-size': 10.5, fill: i ? 'var(--ink3)' : 'var(--ink)', 'font-weight': i ? 500 : 800 }, `${n} ${d}`);
+  });
+})();
+
+// 표
+const gC = (v, f) => `<b class="${f(v)}">${SHAPE[f(v)]}</b>`;
+document.getElementById('five').innerHTML = '<tr><th>밤</th><th>점수</th><th>구름</th><th>시상</th><th>달</th><th>최적</th></tr>' +
+  DAYS.map(([d, n, v, c, se, j, mo, w]) => `<tr><td>${n} ${d}</td><td><b style="font-size:17px">${v}</b> ${gC(v, gS)}</td><td>${c}%</td><td>${se.toFixed(1)}″</td><td>${mo}%</td><td>${w}</td></tr>`).join('');
+const TB = [['달', 'Moon', '12:48', '18:16', 38, '23:41', '−10.2'], ['토성', 'Saturn', '14:52', '20:41', 57, '02:34', '0.9'], ['해왕성', '', '14:20', '20:10', 54, '02:04', '7.8'], ['천왕성', 'Uranus', '17:21', '00:20', 74, '07:19', '5.6'],
+  ['목성', 'Jupiter', '23:02', '05:50', 68, '12:38', '−2.2'], ['화성', 'Mars', '23:48', '06:20', 64, '12:52', '0.6'], ['금성', '', '04:41', '10:22', 44, '16:03', '−4.6'], ['수성', '', '05:22', '10:48', 40, '16:14', '−0.4']];
+document.getElementById('bodies').innerHTML = '<tr><th>천체</th><th>뜸</th><th>남중</th><th>고도</th><th>짐</th><th>등급</th></tr>' +
+  TB.map(([ko, id, r, t, a, st, m]) => `<tr><td${id ? ` style="color:var(--b-${id})"` : ''}>${ko}</td><td>${r}</td><td>${t}</td><td>${a}°</td><td>${st}</td><td>${m}</td></tr>`).join('');
+
+// ?art — 같은 위젯을 폰 화면에 올려 보여 준다
+if (location.search.includes('art')) {
+  document.body.classList.add('art');
+  const page = document.querySelector('.page'), W = [...document.querySelectorAll('.w')], lock = document.querySelector('.lock'), inline = document.querySelector('.inline');
+  page.innerHTML = '';
+  const h = (cls, html = '') => { const d = document.createElement('div'); d.className = cls; d.innerHTML = html; return d; };
+  const APP = '<svg width="60" height="60" viewBox="0 0 60 60"><rect width="60" height="60" fill="#0c1220"/><rect width="60" height="15" fill="#131b2e"/><path d="M6 50Q30 4 54 50" fill="none" stroke="#e8c95a" stroke-width="3"/><path d="M41 22a9 9 0 1 1-9-9a7 7 0 0 0 9 9" fill="#d5dae3"/><rect x="6" y="50" width="48" height="2" fill="#33405f"/></svg>';
+  const icons = app => { const r = h('icons'); for (let i = 0; i < 4; i++) r.appendChild(h('ic', i === 0 && app ? `<i>${APP}</i>천문 예보` : '<i></i>&nbsp;')); return r; };
+  function phone(cap, items, { dock = true, black = false, n = 0, lockscreen = false } = {}) {
+    const p = h('phone'), s = h('screen' + (black ? ' black' : ''));
+    s.appendChild(h('island')); s.appendChild(h('status', lockscreen ? '<span></span><span class="batt"></span>' : '<span>21:10</span><span class="batt"></span>'));
+    const g = h('grid' + (lockscreen ? ' lockgrid' : '')); items.forEach(x => g.appendChild(x)); s.appendChild(g);
+    if (lockscreen) s.appendChild(h('home'));
+    else { if (dock) s.appendChild(h('dock', '<i></i><i></i><i></i><i></i>')); s.appendChild(h('dots', [0, 1, 2, 3].map(i => i === n ? '<b>●</b>' : '●').join(''))).style.bottom = dock ? '112px' : '22px'; }
+    p.appendChild(s); p.appendChild(h('pcap', cap)); page.appendChild(p);
+  }
+  phone('홈 화면 1 — 판정 · 점수 · 달', [W[4], W[0], W[1], icons(true), icons()], { n: 0 });
+  phone('홈 화면 2 — 종합 · 대기 · 지금 천체', [W[8], W[2], W[3]], { n: 1 });
+  phone('홈 화면 3 — 고도 곡선 · 기상 띠 · 5일 점수', [W[5], W[7], W[6]], { n: 2 });
+  phone('홈 화면 4 — 천체 출몰표 · 5일 예보표', [W[9], W[10]], { n: 3, dock: false });
+  phone('잠금 화면', [inline, h('clock', '21:10'), lock], { lockscreen: true });
+}
+</script>
+</body>
+</html>

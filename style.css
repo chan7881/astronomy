@@ -72,6 +72,8 @@ svg text { fill: var(--ink3); font-size: 11.5px; font-family: inherit; }
 svg text.r { text-anchor: end; fill: var(--ink2); }
 svg text.lbl { fill: var(--ink); font-size: 12px; font-weight: 700; paint-order: stroke; stroke: var(--tw4); stroke-width: 3px; }
 svg text.v { fill: var(--ink); font-size: 11px; text-anchor: middle; }
+svg text.cv.hi { fill: var(--bg); }
+:root[data-theme="red"] svg text.cv { fill: var(--ink); stroke: #000; stroke-width: 3px; paint-order: stroke; stroke-linejoin: round; }
 .tw0 { fill: var(--tw0); } .tw1 { fill: var(--tw1); } .tw2 { fill: var(--tw2); } .tw3 { fill: var(--tw3); } .tw4 { fill: var(--tw4); }
 .grid { stroke: var(--line); stroke-width: 1; } .grid.dash { stroke-dasharray: 2 4; }
 .horizon { stroke: var(--ink3); stroke-width: 1.5; }
