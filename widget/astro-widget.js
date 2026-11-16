@@ -1606,7 +1606,7 @@ return { parseParam };
 __m["widget/app.js"] = (() => {
 // Scriptable에서 도는 부분: 자료 받기 · 그리기 명령을 DrawContext로 옮기기 · 위젯 내놓기.
 // 계산과 배치는 data.js·layout.js에 있고 여기서는 Scriptable API만 다룬다.
-/* global Astronomy, config, args, Script, Request, FileManager, ListWidget, DrawContext, Size, Rect, Point, Path, Color, Font */
+/* global Astronomy, config, args, Script, Request, FileManager, ListWidget, DrawContext, Size, Rect, Point, Path, Color, Font, Timer */
 const { makeSky } = __m["js/sky.js"];
 const { forecastUrl, airUrl, normalize } = __m["js/api.js"];
 const { widgetModel } = __m["widget/data.js"];
@@ -1616,22 +1616,55 @@ const { parseParam } = __m["widget/param.js"];
 const SITE = 'https://chan7881.github.io/astronomy/';
 const TTL = 30 * 60e3;
 
-/** 예보를 받는다. 30분 안에 받은 것이 있으면 그것을, 못 받으면 예전 것이라도 쓴다. 아무것도 없으면 null */
+// 여러 위젯이 한꺼번에 새로 고칠 때 저마다 예보를 받으면 시간·메모리를 나눠 쓰다 시간 초과가 난다.
+// 그래서 받는 중 표시(.lock)를 두고, 다른 위젯이 받는 중이면 직접 받지 않고 예전 것이나 그 결과를 쓴다.
+const LOCK_MS = 20e3, WAIT_MS = 8e3, FETCH_TIMEOUT = 8, OLD_OK = 6 * 3600e3, SOON = 5 * 60e3;
+const sleep = ms => new Promise(r => Timer.schedule(ms, false, r));
+
+/**
+ * 예보를 받는다. 30분 안에 받은 것이 있으면 그것을, 못 받으면 예전 것이라도 쓴다.
+ * 반환 {data(없으면 null), soon(true면 새 예보가 아니니 5분 뒤에 다시 고친다)}
+ */
 async function loadData(place) {
   const fm = FileManager.local();
-  const path = fm.joinPath(fm.cacheDirectory(), `astro-${place.lat.toFixed(3)}_${place.lon.toFixed(3)}.json`);
-  let old = null;
-  try { if (fm.fileExists(path)) old = JSON.parse(fm.readString(path)); } catch (e) { old = null; }
-  if (old && Date.now() - old.at < TTL) return normalize(old.fc, old.air);
+  const base = fm.joinPath(fm.cacheDirectory(), `astro-${place.lat.toFixed(3)}_${place.lon.toFixed(3)}`);
+  const path = base + '.json', lock = base + '.lock';
+  const read = () => { try { return fm.fileExists(path) ? JSON.parse(fm.readString(path)) : null; } catch (e) { return null; } };
+  const busy = () => { try { const t = fm.fileExists(lock) ? Number(fm.readString(lock)) : 0; return Date.now() - t < LOCK_MS; } catch (e) { return false; } };
+  const age = c => (c ? Date.now() - c.at : Infinity);
+  const out = (c, soon) => ({ data: c ? normalize(c.fc, c.air) : null, soon });
+  let old = read();
+  if (age(old) < TTL) return out(old, false);
+  if (busy()) {
+    // 다른 위젯이 받는 중 — 몇 시간 안의 예전 것이면 바로 쓰고, 아니면 그 위젯이 끝나기를 기다린다
+    if (age(old) < OLD_OK) return out(old, true);
+    for (let t = 0; t < WAIT_MS && busy(); t += 500) {
+      await sleep(500);
+      const c = read();
+      if (age(c) < TTL) return out(c, false);
+    }
+    if (busy()) return out(old, true);   // 아직도 받는 중 — 겹쳐 받지 않는다
+    old = read();
+    if (age(old) < TTL) return out(old, false);
+  }
+  const mine = String(Date.now());
+  try { fm.writeString(lock, mine); } catch (e) { /* 표시는 없어도 된다 */ }
   try {
-    const fc = await new Request(forecastUrl(place.lat, place.lon)).loadJSON();
+    const q = new Request(forecastUrl(place.lat, place.lon)); q.timeoutInterval = FETCH_TIMEOUT;
+    const fc = await q.loadJSON();
     if (!fc || !fc.hourly) throw new Error('예보 응답이 비었다');
     let air = null;
-    try { air = await new Request(airUrl(place.lat, place.lon)).loadJSON(); if (!air || !air.hourly) air = null; } catch (e) { air = null; }
+    try {
+      const r = new Request(airUrl(place.lat, place.lon)); r.timeoutInterval = FETCH_TIMEOUT / 2;
+      air = await r.loadJSON(); if (!air || !air.hourly) air = null;
+    } catch (e) { air = null; }
     try { fm.writeString(path, JSON.stringify({ at: Date.now(), fc, air })); } catch (e) { /* 캐시는 없어도 된다 */ }
-    return normalize(fc, air);
+    return out({ fc, air }, false);
   } catch (e) {
-    return old ? normalize(old.fc, old.air) : null;
+    return out(old || read(), true);
+  } finally {
+    // 내가 쓴 표시일 때만 지운다(그사이 다른 위젯이 덮어썼으면 그쪽 것이다)
+    try { if (fm.fileExists(lock) && fm.readString(lock) === mine) fm.remove(lock); } catch (e) { /* 남아도 LOCK_MS 뒤엔 무시된다 */ }
   }
 }
 
@@ -1656,11 +1689,10 @@ function trace(o) {
 }
 
 /** 그리기 명령 → Image */
-function paint({ w, h, ops }, opaque, log) {
+function paint({ w, h, ops }, opaque) {
   const d = new DrawContext();
   d.size = new Size(w, h); d.opaque = opaque; d.respectScreenScale = true;
-  for (const [i, o] of ops.entries()) {
-    if (log && i % 40 === 0) log(`그림 ${i}/${ops.length} ${o.op} ${o.fill || o.color || ''}`);
+  for (const o of ops) {
     if (o.op === 'text') {
       const BIG = 400, x = o.align === 'l' ? o.x : o.align === 'c' ? o.x - BIG / 2 : o.x - BIG;
       d.setFont(FONT[o.weight](o.size)); d.setTextColor(col(o.color));
@@ -1674,27 +1706,7 @@ function paint({ w, h, ops }, opaque, log) {
     if (o.fill) { d.addPath(trace(o)); d.setFillColor(col(o.fill, a)); d.fillPath(); }
     if (o.stroke) { d.addPath(trace(o)); d.setStrokeColor(col(o.stroke, a)); d.setLineWidth(o.sw == null ? 1 : o.sw); d.strokePath(); }
   }
-  if (log) log('getImage 전');
-  const img = d.getImage();
-  if (log) log('getImage 뒤');
-  return img;
-}
-
-// 임시 진단(2026-11-16, 평면 「기상」 시간 초과): 설정값에 「진단」을 더하면 단계마다 걸린 시간을 파일에 적고,
-// 다음 실행에서 그 기록을 글로 보인 뒤 지운다. 원인을 찾으면 뺀다.
-function diagLog() {
-  const fm = FileManager.local(), path = fm.joinPath(fm.libraryDirectory(), 'astro-diag.txt');
-  const prev = fm.fileExists(path) ? fm.readString(path) : null;
-  const t0 = Date.now(), lines = [];
-  const log = s => { lines.push(`${((Date.now() - t0) / 1000).toFixed(2)}s ${s}`); try { fm.writeString(path, lines.join('\n')); } catch (e) { /* 기록은 없어도 된다 */ } };
-  return { prev, log, clear: () => { try { fm.remove(path); } catch (e) { /* 없으면 그만 */ } } };
-}
-
-function textWidget(text) {
-  const w = new ListWidget();
-  w.backgroundColor = new Color('#000000');
-  for (const s of text.split('\n').slice(-22)) { const t = w.addText(s); t.font = Font.systemFont(9); t.textColor = new Color('#d6d9df'); t.lineLimit = 1; }
-  return w;
+  return d.getImage();
 }
 
 function lockWidget(family, kind, model) {
@@ -1713,32 +1725,22 @@ function lockWidget(family, kind, model) {
 
 async function run() {
   const family = config.widgetFamily || 'large';
-  const raw = String(args.widgetParameter ?? ''), diag = raw.includes('진단') ? diagLog() : null, log = diag && diag.log;
-  if (diag && diag.prev) {
-    diag.clear();
-    const w = textWidget('지난 실행 기록\n' + diag.prev);
-    if (config.runsInWidget) Script.setWidget(w); else await w.presentLarge();
-    Script.complete();
-    return;
-  }
-  if (log) log(`시작 ${family} [${raw}]`);
-  const { kind, place, glass } = parseParam(diag ? raw.replace(/진단/g, '') : args.widgetParameter, family);
-  const data = await loadData(place);
-  if (log) log(`예보 ${data ? '받음' : '없음'}`);
+  // 「진단」은 예전 임시 설정값 — 남아 있어도 지명으로 읽지 않는다
+  const param = String(args.widgetParameter ?? '').replace(/진단/g, '');
+  const { kind, place, glass } = parseParam(param, family);
+  const { data, soon } = await loadData(place);
   const model = widgetModel(makeSky(Astronomy), place, data, Date.now());
-  if (log) log('계산 끝');
   let w;
   if (family.startsWith('accessory')) w = lockWidget(family, kind, model);
   else {
     w = new ListWidget();
     w.setPadding(0, 0, 0, 0);
-    const L = layout(kind, model, { glass });
-    if (log) log(`배치 ${kind} ${glass ? '유리' : '평면'} ${L.w}x${L.h} 명령 ${L.ops.length}`);
-    w.backgroundImage = paint(L, true, log);
+    w.backgroundImage = paint(layout(kind, model, { glass }), true);
   }
-  if (log) log('위젯 내놓기');
   w.url = SITE;
-  w.refreshAfterDate = new Date(Date.now() + TTL);
+  // 위젯마다(크기·설정값) 다시 고칠 때를 0~5분 어긋나게 둔다 — 한꺼번에 깨어나는 일을 줄인다
+  let hsh = 0; for (const ch of family + param) hsh = (hsh * 31 + ch.charCodeAt(0)) % 301;
+  w.refreshAfterDate = new Date(Date.now() + (soon ? SOON : TTL) + hsh * 1e3);
   if (config.runsInWidget) Script.setWidget(w);
   else if (family === 'small') await w.presentSmall();
   else if (family === 'medium') await w.presentMedium();

@@ -35,7 +35,21 @@
   </section>
 
   <section class="card" id="verdict-card" hidden>
-    <h2 id="verdict-title">오늘 밤 판정</h2>
+    <h2 class="has-info"><span id="verdict-title">오늘 밤 판정</span><button type="button" class="info" id="btn-score-info" aria-expanded="false" aria-controls="score-info" aria-label="관측 점수 기준"><span aria-hidden="true">i</span></button></h2>
+    <div class="score-info" id="score-info" hidden>
+      <p><b>관측 점수</b> = 맑음 × (바탕 45 + 시상 25 + 어둠 18 + 투명도 12)</p>
+      <ul>
+        <li><span>맑음</span>구름 없는 비율을 곱한다 · 구름 50%면 최대 50점</li>
+        <li><span>시상</span>1″ 이하 25점 → 3″ 이상 0점</li>
+        <li><span>어둠</span>달이 밝고 높을수록 18점에서 뺀다 · 달이 지면 18점</li>
+        <li><span>투명도</span>에어로졸(AOD) 0이면 12점 → 0.5 이상 0점</li>
+        <li><span>자료 없음</span>시상은 절반, 투명도는 70%로 센다</li>
+        <li><span>밤 점수</span>천문박명 사이 시간별 점수의 평균</li>
+        <li><span>등급</span>70 이상 좋음 · 40 이상 보통 · 그 아래 나쁨</li>
+        <li><span>최적 시간</span>최고점의 85% 이상이 이어지는 구간 · 최고점이 40 미만이면 없음</li>
+        <li><span>주의</span>강수·결로·강풍·제트기류·연무는 점수에 넣지 않고 따로 알린다</li>
+      </ul>
+    </div>
     <div class="verdict">
       <div class="score" id="score"><div><b id="score-num"></b><span>관측 점수</span></div></div>
       <ul class="brief" id="brief"></ul>

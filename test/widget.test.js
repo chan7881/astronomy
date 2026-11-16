@@ -234,10 +234,11 @@ test('묶음: 가짜 Scriptable에서 모든 크기·종류가 오류 없이 위
   const { code } = bundle();
   const now = Date.now(), start = new Date(now + KST - 36 * 3600e3).toISOString().slice(0, 13) + ':00';
   let { fc, air } = fakeForecast(start, 24 * 7);
-  const cases = [...Object.entries(KINDS).map(([k, f]) => [f, k]), ['small', null], ['extraLarge', '천체'], ['large', '기상 | 유리'], ['large', '기상 | 진단'], ['small', '유리'],
+  const cases = [...Object.entries(KINDS).map(([k, f]) => [f, k]), ['small', null], ['extraLarge', '천체'], ['large', '기상 | 유리'], ['small', '유리'],
     ['accessoryInline', null], ['accessoryRectangular', null], ['accessoryCircular', null], ['accessoryCircular', '달']];
-  const runCase = async (family, param, src) => {
-    const log = { calls: [], widget: null, requests: [], files: {} };
+  let onWait = null, onFetch = null;
+  const runCase = async (family, param, src, files = {}, apiCalls = 2) => {
+    const log = { calls: [], widget: null, requests: [], files, waits: 0 };
     const rec = name => class { constructor(...a) { this.a = a; log.calls.push('new ' + name); } };
     class Path extends rec('Path') { move() {} addLine() {} addRect() {} addEllipse() {} closeSubpath() {}
       addRoundedRect(r, cw, ch) { assert.ok(cw <= r.a[2] / 2 + 1e-9 && ch <= r.a[3] / 2 + 1e-9, '모서리가 사각형보다 크다'); } }
@@ -252,10 +253,11 @@ test('묶음: 가짜 Scriptable에서 모든 크기·종류가 오류 없이 위
     const ctx = vm.createContext({
       console, Date, Math, JSON, encodeURIComponent, Promise,
       config: { widgetFamily: family, runsInWidget: true }, args: { widgetParameter: param },
-      Script: { setWidget: w => { log.widget = w; }, complete() { log.done = true; } },
-      Request: class { constructor(url) { this.url = url; log.requests.push(url); } async loadJSON() { return JSON.parse(JSON.stringify(this.url.includes('air-quality') ? air : fc)); }
+      Script: { setWidget: w => { log.widget = w; log.setAt = Date.now(); }, complete() { log.done = true; } },
+      Request: class { constructor(url) { this.url = url; log.requests.push(url); } async loadJSON() { if (onFetch) onFetch(log.files); return JSON.parse(JSON.stringify(this.url.includes('air-quality') ? air : fc)); }
         async loadString() { this.response = { statusCode: 200 }; return code; } },
-      FileManager: { local: () => ({ cacheDirectory: () => '/c', libraryDirectory: () => '/l', modificationDate: () => new Date(), joinPath: (a, b) => a + '/' + b, fileExists: p => p in log.files, readString: p => log.files[p], writeString: (p, s) => { log.files[p] = s; } }) },
+      FileManager: { local: () => ({ cacheDirectory: () => '/c', libraryDirectory: () => '/l', modificationDate: () => new Date(), joinPath: (a, b) => a + '/' + b, fileExists: p => p in log.files, readString: p => log.files[p], writeString: (p, s) => { log.files[p] = s; }, remove: p => { delete log.files[p]; } }) },
+      Timer: { schedule: (ms, rep, f) => { log.waits++; if (onWait) onWait(log.files); setImmediate(f); } },
       ListWidget, DrawContext, Path, Size: rec('Size'), Rect: rec('Rect'), Point: rec('Point'),
       Color: class { constructor(hex, a) { assert.match(hex, /^#[0-9a-f]{6}$/, 'Scriptable의 Color는 #rrggbb만 받는다'); assert.ok(a >= 0 && a <= 1, `알파 ${a}`); } },
       Font: { mediumSystemFont: font, boldSystemFont: font, heavySystemFont: font, systemFont: font },
@@ -264,8 +266,8 @@ test('묶음: 가짜 Scriptable에서 모든 크기·종류가 오류 없이 위
     const label = `${family}/${param}`, w = log.widget;
     assert.ok(w && log.done, label);
     const api = log.requests.filter(u => u.includes('open-meteo'));
-    assert.equal(api.length, 2, label);
-    assert.ok(api[0].startsWith('https://api.open-meteo.com/v1/forecast?latitude=36.019&longitude=129.343&'), api[0]);
+    assert.equal(api.length, apiCalls, label);
+    if (apiCalls) assert.ok(api[0].startsWith('https://api.open-meteo.com/v1/forecast?latitude=36.019&longitude=129.343&'), api[0]);
     assert.ok(w.refreshAfterDate.getTime() > now && w.url.startsWith('https://'), label);
     if (family === 'accessoryInline') assert.match(w.texts[0], /^관측 \d+ · /);
     else if (family === 'accessoryRectangular') assert.equal(w.texts.length, 3);
@@ -278,6 +280,40 @@ test('묶음: 가짜 Scriptable에서 모든 크기·종류가 오류 없이 위
   const viaLoader = await runCase('medium', '5일', readFileSync(new URL('../widget/loader.js', import.meta.url), 'utf8'));
   assert.equal(viaLoader.requests[0], 'https://chan7881.github.io/astronomy/widget/astro-widget.js');
   assert.equal(viaLoader.files['/l/astro-widget.cache.js'], code);
+  // 여러 위젯이 한꺼번에: 다른 위젯이 받는 중(.lock이 방금 것)이면 예전 예보를 쓰고 받지 않는다
+  const C = '/c/astro-36.019_129.343', stale = JSON.stringify({ at: now - 2 * 3600e3, fc, air });
+  let r = await runCase('large', '기상', code, { [C + '.json']: stale, [C + '.lock']: String(Date.now() - 2e3) }, 0);
+  assert.equal(r.waits, 0, '예전 것이 있으면 기다리지 않는다');
+  // 받는 중 표시가 오래됐으면(멈춘 위젯) 무시하고 직접 받은 뒤 표시를 지운다
+  r = await runCase('large', '기상', code, { [C + '.json']: stale, [C + '.lock']: String(Date.now() - 60e3) });
+  assert.equal(C + '.lock' in r.files, false);
+  assert.ok(JSON.parse(r.files[C + '.json']).at >= now, '새로 받은 것을 저장');
+  // 처음(저장본 없음)인데 다른 위젯이 받는 중이면 기다렸다가 그 결과를 쓴다
+  const shared = { [C + '.lock']: String(Date.now()) };
+  onWait = files => { files[C + '.json'] = JSON.stringify({ at: Date.now(), fc, air }); };   // 첫 대기 동안 다른 위젯이 받아 둔다
+  r = await runCase('large', '기상', code, shared, 0);
+  onWait = null;
+  assert.equal(r.waits, 1, '한 번 기다리고 그 결과를 썼다');
+  // 예전 것이 6시간보다 오래됐고 다른 위젯이 계속 받는 중이면 기다리되, 겹쳐 받지 않고 5분 뒤 다시 고친다
+  const veryOld = JSON.stringify({ at: now - 10 * 3600e3, fc, air });
+  r = await runCase('large', '기상', code, { [C + '.json']: veryOld, [C + '.lock']: String(Date.now() + 60e3) }, 0);
+  assert.equal(r.waits, 16);
+  assert.ok(r.widget.refreshAfterDate.getTime() - r.setAt < 11 * 60e3, '곧 다시 고친다');
+  // 기다리는 중 그 위젯이 실패하고 표시를 지우면 더 기다리지 않고 직접 받는다
+  onWait = files => { delete files[C + '.lock']; };
+  r = await runCase('large', '기상', code, { [C + '.json']: veryOld, [C + '.lock']: String(Date.now()) });
+  onWait = null;
+  assert.equal(r.waits, 1);
+  // 받는 사이 다른 위젯이 표시를 덮어썼으면 그 표시는 지우지 않는다
+  onFetch = files => { files[C + '.lock'] = 'other'; };
+  r = await runCase('large', '기상', code);
+  onFetch = null;
+  assert.equal(r.files[C + '.lock'], 'other');
+  // 위젯마다 다시 고칠 때가 어긋난다
+  const late = r => Math.round((r.widget.refreshAfterDate.getTime() - r.setAt - 30 * 60e3) / 1e3);   // 30분 뒤에서 몇 초 더
+  const d1 = late(await runCase('large', '기상', code)), d2 = late(await runCase('large', '기상 | 유리', code));
+  assert.ok(d1 >= 0 && d1 <= 300 && d2 >= 0 && d2 <= 300, `${d1}, ${d2}`);
+  assert.notEqual(d1, d2, '설정값이 다르면 어긋난다');
   // 점수가 0에 가까우면 막대가 모서리 반지름보다 낮아진다 — 그대로 넘기면 CoreGraphics가 죽는다
   ({ fc, air } = fakeForecast(start, 24 * 7, { cloud: 100 }));
   await runCase('medium', '5일', code);
@@ -485,6 +521,18 @@ test('받아오기: 저장본이 방금 것이어도 서버 판이 바뀌었으�
   assert.equal(r.ran, 'old');
   assert.equal(r.files['/l/astro-widget.cache.js'], OLD);
   assert.equal('/l/astro-widget.etag' in r.files, false);
+  // 3분 안에 다른 위젯이 물었으면 묻지 않고 저장본 — 위젯 여러 개가 한꺼번에 깨어날 때
+  r = await run({ '/l/astro-widget.cache.js': OLD, '/l/astro-widget.asked': String(Date.now() - 60e3) }, server);
+  assert.equal(r.ran, 'old'); assert.equal(r.sent.length, 0);
+  // 3분이 지났으면 다시 묻고 물은 시각을 남긴다
+  r = await run({ '/l/astro-widget.cache.js': OLD, '/l/astro-widget.asked': String(Date.now() - 200e3) }, server);
+  assert.equal(r.ran, 'new'); assert.ok(Date.now() - Number(r.files['/l/astro-widget.asked']) < 5e3);
+  // 묻다 실패하면 물은 표시를 지워 다음 위젯이 다시 묻게 한다
+  r = await run({ '/l/astro-widget.cache.js': OLD }, () => ({ throw: true }));
+  assert.equal('/l/astro-widget.asked' in r.files, false);
+  // 저장본이 없으면 방금 물었어도 묻는다
+  r = await run({ '/l/astro-widget.asked': String(Date.now()) }, server);
+  assert.equal(r.ran, 'new');
   // ETag 없이 새 판이 오면 옛 표를 지운다
   r = await run({ '/l/astro-widget.cache.js': OLD, '/l/astro-widget.etag': '"v1"' }, () => ({ statusCode: 200, headers: {}, body: NEW }));
   assert.equal(r.ran, 'new');

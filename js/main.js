@@ -201,6 +201,10 @@ function init() {
     document.documentElement.dataset.theme = t; P.saveTheme(t);
     $('btn-red').setAttribute('aria-pressed', t === 'red');
   };
+  $('btn-score-info').onclick = () => {
+    const open = $('score-info').hidden;
+    $('score-info').hidden = !open; $('btn-score-info').setAttribute('aria-expanded', open);
+  };
   $('btn-search').onclick = () => { drawFavs(); $('results').innerHTML = ''; $('dlg').showModal(); $('q').focus(); };
   $('btn-close').onclick = () => $('dlg').close();
   $('btn-fav').onclick = () => { P.toggleFavorite(state.place); render(); };

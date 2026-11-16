@@ -46,6 +46,15 @@ button:focus-visible, tr:focus-visible, summary:focus-visible, input:focus-visib
 .card { background: var(--card); border: 1px solid var(--edge); border-radius: 12px; padding: 0 14px 14px; margin-bottom: 12px; overflow: hidden; }
 .card h2 { margin: 0 -14px 12px; padding: 9px 14px; background: var(--band); border-bottom: 1px solid var(--edge); font-size: 13px; font-weight: 800; letter-spacing: .08em; }
 
+.card h2.has-info { display: flex; align-items: center; justify-content: space-between; padding-top: 0; padding-bottom: 0; min-height: 37px; }
+.info { width: 44px; height: 37px; margin-right: -12px; padding: 0; border: 0; background: none; cursor: pointer; display: grid; place-items: center; }
+.info span { width: 20px; height: 20px; display: grid; place-items: center; border: 1.5px solid var(--ink3); border-radius: 50%; color: var(--ink2); font: italic 700 12px/1 Georgia, "Times New Roman", serif; letter-spacing: 0; }
+.info[aria-expanded="true"] span { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.score-info { word-break: keep-all; margin: -2px 0 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--band); font-size: 12px; color: var(--ink2); }
+.score-info p { margin: 0 0 6px; color: var(--ink); }
+.score-info ul { list-style: none; margin: 0; padding: 0; }
+.score-info li { display: grid; grid-template-columns: 62px 1fr; gap: 8px; padding: 3px 0; border-top: 1px solid var(--line); }
+.score-info li span { color: var(--ink3); font-weight: 700; }
 .verdict { display: flex; gap: 14px; align-items: flex-start; }
 .score { width: 92px; height: 92px; flex: none; display: grid; place-items: center; text-align: center; border-radius: 10px; border: 2px solid var(--ink3); border-left-width: 6px; }
 .score.s-g { border-color: var(--good); } .score.s-m { border-color: var(--mid); } .score.s-b { border-color: var(--bad); }
