@@ -246,6 +246,8 @@ function init() {
   $('search-form').onsubmit = async e => {
     e.preventDefault();
     const q = $('q').value.trim(); if (!q) return;
+    const c = P.parseCoords(q);
+    if (c) { $('results').innerHTML = placeItem({ name: '지정 좌표', region: '', lat: c.lat, lon: c.lon, elev: 0 }, false); return; }
     $('results').innerHTML = '<li class="empty">찾는 중</li>';
     try {
       const r = await searchPlace(q);
