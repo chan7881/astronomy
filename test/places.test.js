@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCoords } from '../js/places.js';
+import { parseCoords, locate } from '../js/places.js';
+import { osmPlace, mergePlaces } from '../js/api.js';
 
 test('좌표: 글자가 없으면 위도, 경도 순서', () => {
   assert.deepEqual(parseCoords('36.019, 129.343'), { lat: 36.019, lon: 129.343 });
@@ -32,4 +33,58 @@ test('좌표: 범위 끝은 받고 넘으면 버린다', () => {
 test('좌표가 아닌 것은 null — 지명 검색으로 넘긴다', () => {
   for (const q of ['포항', '', '36.019', '36.0 129.3 20', 'Area 51', '36N 129N', '36E 129W', '36N 129', '-36S 129E', 'N36S 129E', '1e2, 3'])
     assert.equal(parseCoords(q), null, q);
+});
+
+// ── 지명(OpenStreetMap 응답 → 관측지) ─────────────────────
+const DAEJAM = { lat: '36.0190', lon: '129.3430', name: '포항시청', address: { quarter: '대잠동', suburb: '대이동', borough: '남구', city: '포항시', province: '경상북도', postcode: '37684', country: '대한민국', country_code: 'kr' } };
+const CHEONGHA = { lat: '36.2010607', lon: '129.3402788', name: '청하면', address: { town: '청하면', borough: '북구', city: '포항시', province: '경상북도', country: '대한민국' } };
+
+test('지명: 찾은 곳의 이름을 쓰고, 지역은 그 위의 큰 구역 셋과 나라', () => {
+  assert.deepEqual(osmPlace(CHEONGHA), { name: '청하면', region: '북구 · 포항시 · 경상북도 · 대한민국', lat: 36.2010607, lon: 129.3402788, elev: 0 });
+  assert.deepEqual(osmPlace(DAEJAM), { name: '포항시청', region: '남구 · 포항시 · 경상북도 · 대한민국', lat: 36.019, lon: 129.343, elev: 0 });
+});
+
+test('지명: 이름이 없으면(현재 위치) 가장 작은 행정 구역이 이름', () => {
+  const p = osmPlace({ ...DAEJAM, name: null });
+  assert.equal(p.name, '대잠동');
+  assert.equal(p.region, '남구 · 포항시 · 경상북도 · 대한민국');
+  const village = osmPlace({ lat: '36.165', lon: '128.976', name: '', address: { village: '갈천리', town: '현서면', county: '청송군', province: '경상북도', country: '대한민국' } });
+  assert.deepEqual([village.name, village.region], ['갈천리', '현서면 · 청송군 · 경상북도 · 대한민국']);
+});
+
+test('지명: 좌표나 이름이 없는 응답은 버린다', () => {
+  assert.equal(osmPlace(null), null);
+  assert.equal(osmPlace({ error: 'Unable to geocode' }), null);
+  assert.equal(osmPlace({ lat: 'x', lon: '129', name: '가' }), null);
+  assert.equal(osmPlace({ lat: null, lon: null, name: '가' }), null);   // Number(null)은 0이다
+  assert.equal(osmPlace({ lat: '36', lon: '129', address: { country: '대한민국' } }), null);
+  assert.equal(osmPlace({ lat: '0', lon: '0', name: '널섬' }).lat, 0);
+});
+
+test('지명: 두 목록을 합칠 때 앞 목록이 먼저, 같은 곳은 한 번만', () => {
+  const a = [{ name: '청하면', lat: 36.201, lon: 129.340 }, { name: '청하면', lat: 35.907, lon: 126.840 }];
+  const b = [{ name: '청하', lat: 36.21, lon: 129.35 }, { name: 'Cheongha', lat: 41.0, lon: 123.0 }];
+  assert.deepEqual(mergePlaces(a, b).map(p => [p.name, p.lat]), [['청하면', 36.201], ['청하면', 35.907], ['Cheongha', 41.0]]);
+  // 같은 곳이 두 번 오면 하나만, 해발은 아는 쪽에서 넘겨받는다
+  const twice = mergePlaces([{ name: '보현산천문대', lat: 36.164, lon: 128.977, elev: 0 }, { name: '보현산천문대', lat: 36.165, lon: 128.976, elev: 0 }, { name: '보현산', lat: 36.166, lon: 128.975, elev: 0 }], [{ name: '보현산', lat: 36.16, lon: 128.98, elev: 1124 }]);
+  assert.deepEqual(twice.map(p => [p.name, p.elev]), [['보현산천문대', 1124], ['보현산', 0]]);
+  assert.equal(a[0].elev, undefined);
+  assert.deepEqual(mergePlaces([], b).map(p => p.name), ['청하', 'Cheongha']);
+  assert.equal(mergePlaces(a, b, 2).length, 2);
+  assert.equal(mergePlaces([{ name: 'a', lat: 36, lon: 129 }], [{ name: 'b', lat: 36.04, lon: 129.06 }]).length, 2);   // 위도만 가까우면 다른 곳
+});
+
+test('현재 위치: GPS가 안 잡히면 대강의 위치로 한 번 더, 권한이 꺼져 있으면 바로 알린다', async () => {
+  const geo = answers => { const calls = []; return { calls, getCurrentPosition(ok, fail, opt) { calls.push(opt); const a = answers[calls.length - 1]; a.code ? fail(a) : ok({ coords: { latitude: a[0], longitude: a[1] } }); } }; };
+  const good = geo([[36.02, 129.34]]);
+  assert.deepEqual(await locate(good), { lat: 36.02, lon: 129.34 });
+  assert.deepEqual([good.calls.length, good.calls[0].enableHighAccuracy, good.calls[0].maximumAge], [1, true, 60000]);
+  const indoor = geo([{ code: 3 }, [36.1, 129.3]]);
+  assert.deepEqual(await locate(indoor), { lat: 36.1, lon: 129.3 });
+  assert.deepEqual(indoor.calls.map(o => o.enableHighAccuracy), [true, false]);
+  const denied = geo([{ code: 1 }]);
+  await assert.rejects(locate(denied), /위치 권한이 꺼져 있습니다/);
+  assert.equal(denied.calls.length, 1);
+  await assert.rejects(locate(geo([{ code: 2 }, { code: 3 }])), /위치를 찾지 못했습니다/);
+  await assert.rejects(locate(null), /위치 기능 없음/);
 });

@@ -29,6 +29,9 @@ async function loadData(place) {
   }
 }
 
+// '#rrggbb' 또는 '#rrggbbaa'
+const col = (hex, a = 1) => (hex.length === 9 ? new Color(hex.slice(0, 7), a * parseInt(hex.slice(7), 16) / 255) : new Color(hex, a));
+
 const FONT = { m: s => Font.mediumSystemFont(s), b: s => Font.boldSystemFont(s), h: s => Font.heavySystemFont(s) };
 
 function trace(o) {
@@ -53,16 +56,16 @@ function paint({ w, h, ops }, opaque) {
   for (const o of ops) {
     if (o.op === 'text') {
       const BIG = 400, x = o.align === 'l' ? o.x : o.align === 'c' ? o.x - BIG / 2 : o.x - BIG;
-      d.setFont(FONT[o.weight](o.size)); d.setTextColor(new Color(o.color, 1));
+      d.setFont(FONT[o.weight](o.size)); d.setTextColor(col(o.color));
       if (o.align === 'l') d.setTextAlignedLeft(); else if (o.align === 'c') d.setTextAlignedCenter(); else d.setTextAlignedRight();
       d.drawTextInRect(o.text, new Rect(x, o.y, BIG, o.size * 1.4));
       continue;
     }
     if (o.op === 'rect' && !(o.w > 0 && o.h > 0)) continue;
     const a = o.alpha == null ? 1 : o.alpha;
-    if (o.op === 'line') { d.addPath(trace(o)); d.setStrokeColor(new Color(o.color, 1)); d.setLineWidth(o.sw); d.strokePath(); continue; }
-    if (o.fill) { d.addPath(trace(o)); d.setFillColor(new Color(o.fill, a)); d.fillPath(); }
-    if (o.stroke) { d.addPath(trace(o)); d.setStrokeColor(new Color(o.stroke, a)); d.setLineWidth(o.sw == null ? 1 : o.sw); d.strokePath(); }
+    if (o.op === 'line') { d.addPath(trace(o)); d.setStrokeColor(col(o.color)); d.setLineWidth(o.sw); d.strokePath(); continue; }
+    if (o.fill) { d.addPath(trace(o)); d.setFillColor(col(o.fill, a)); d.fillPath(); }
+    if (o.stroke) { d.addPath(trace(o)); d.setStrokeColor(col(o.stroke, a)); d.setLineWidth(o.sw == null ? 1 : o.sw); d.strokePath(); }
   }
   return d.getImage();
 }
@@ -83,7 +86,7 @@ function lockWidget(family, kind, model) {
 
 export async function run() {
   const family = config.widgetFamily || 'large';
-  const { kind, place } = parseParam(args.widgetParameter, family);
+  const { kind, place, glass } = parseParam(args.widgetParameter, family);
   const data = await loadData(place);
   const model = widgetModel(makeSky(Astronomy), place, data, Date.now());
   let w;
@@ -91,7 +94,7 @@ export async function run() {
   else {
     w = new ListWidget();
     w.setPadding(0, 0, 0, 0);
-    w.backgroundImage = paint(layout(kind, model), true);
+    w.backgroundImage = paint(layout(kind, model, { glass }), true);
   }
   w.url = SITE;
   w.refreshAfterDate = new Date(Date.now() + TTL);

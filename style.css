@@ -1,13 +1,13 @@
 :root {
-  --bg: #05080f; --card: #0c1220; --band: #131b2e; --line: #27314a; --edge: #33405f;
-  --ink: #eef2fa; --ink2: #aab4cb; --ink3: #8592b0;
-  --good: #3fb68b; --mid: #d6a740; --bad: #e0685c;
-  --g-g: #1d4d42; --g-m: #574a22; --g-b: #5c2b2a; --g-p: #1a2440; --na: #10182a;
-  --cloud: #e2e8f4; --cbase: #1a2440;
-  --tw0: #3b4a72; --tw1: #2c3960; --tw2: #202b4d; --tw3: #161f3b; --tw4: #0a1022;
-  --b-Moon: #d5dae3; --b-Mercury: #a493e8; --b-Venus: #f3c9b0; --b-Mars: #ef6f62;
-  --b-Jupiter: #dd9a5e; --b-Saturn: #e8c95a; --b-Uranus: #5fd0c8; --b-Neptune: #6c9bf2;
-  --accent-red: #ff5a4d;
+  --bg: #020203; --card: #0a0b0d; --band: #101114; --line: #1e2026; --edge: #2a2d35;
+  --ink: #d6d9df; --ink2: #989ea9; --ink3: #727986;
+  --good: #4d9a80; --mid: #b3964e; --bad: #bd6a61;
+  --g-g: #16362f; --g-m: #3a331d; --g-b: #402423; --g-p: #15181f; --na: #0c0d10;
+  --cloud: #c2c7d0; --cbase: #13151a;
+  --tw0: #262b38; --tw1: #1d212c; --tw2: #151821; --tw3: #0e1016; --tw4: #07080b;
+  --b-Moon: #c2c6ce; --b-Mercury: #9589c4; --b-Venus: #d6b7a4; --b-Mars: #c96b61;
+  --b-Jupiter: #c08c5e; --b-Saturn: #c8b15c; --b-Uranus: #62b0aa; --b-Neptune: #6e8ecb;
+  --accent-red: #d9584d;
 }
 /* 적색 야간 모드: 모든 색을 빨강 한 계열의 명도 차로 바꾼다. 상태는 모양·글자가 구분한다. */
 :root[data-theme="red"] {

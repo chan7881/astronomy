@@ -1,6 +1,6 @@
 import * as M from './model.js';
 import { makeSky } from './sky.js';
-import { loadForecast, searchPlace } from './api.js';
+import { loadForecast, searchPlace, reversePlace } from './api.js';
 import * as C from './charts.js';
 import * as P from './places.js';
 import * as V from './view.js';
@@ -38,7 +38,7 @@ const cloudLine = n => V.cloudLine(n, hh);
 function render() {
   const v = state.view = buildView(), s = v.summary, p = state.place;
   $('place-name').textContent = p.name;
-  $('place-sub').textContent = `${P.coordText(p)} · 해발 ${Math.round(state.data?.elev ?? p.elev ?? 0)}m`;
+  $('place-sub').textContent = `${p.region ? p.region + ' · ' : ''}${P.coordText(p)} · 해발 ${Math.round(state.data?.elev ?? p.elev ?? 0)}m`;
   $('btn-fav').textContent = P.isFavorite(p) ? '저장됨' : '저장';
   $('btn-fav').setAttribute('aria-pressed', P.isFavorite(p));
 
@@ -200,7 +200,10 @@ function init() {
   $('btn-fav').onclick = () => { P.toggleFavorite(state.place); render(); };
   $('btn-gps').onclick = async () => {
     $('btn-gps').disabled = true;
-    try { const c = await P.locate(); choose({ name: '현재 위치', region: '', lat: c.lat, lon: c.lon, elev: 0 }); }
+    try {
+      const c = await P.locate(), near = await reversePlace(c.lat, c.lon).catch(() => null);
+      choose({ name: near ? near.name : '현재 위치', region: near ? near.region : '', lat: c.lat, lon: c.lon, elev: 0 });
+    }
     catch (e) { state.error = e.message; render(); }
     $('btn-gps').disabled = false;
   };

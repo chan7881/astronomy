@@ -51,8 +51,9 @@ export function normalize(fc, air) {
   return { offsetSec: off, elev: fc.elevation, tz: fc.timezone, hours };
 }
 
-async function getJson(url) {
-  const r = await fetch(url);
+/** ms: 이 시간 안에 답이 없으면 그만둔다(없으면 기다린다) */
+async function getJson(url, ms) {
+  const r = await fetch(url, ms ? { signal: AbortSignal.timeout(ms) } : undefined);
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
@@ -70,11 +71,59 @@ export async function loadForecast(lat, lon) {
   return data;
 }
 
-/** 지명 검색 → [{name, region, lat, lon, elev}] */
+// ── 지명 ───────────────────────────────────────────────
+// 읍·면·동과 천문대 같은 곳은 OpenStreetMap(Nominatim)이, 세계 도시와 해발은 Open-Meteo가 잘 안다. 둘을 함께 쓴다.
+const OSM = 'https://nominatim.openstreetmap.org/';
+const UNITS = ['neighbourhood', 'quarter', 'hamlet', 'village', 'suburb', 'town', 'city_district', 'borough', 'district',
+  'municipality', 'city', 'county', 'state_district', 'province', 'state', 'region'];   // 작은 것부터
+
+/**
+ * Nominatim 결과 하나 → {name, region, lat, lon, elev}. 좌표가 없으면 null.
+ * 이름은 찾은 곳의 이름(없으면 가장 작은 행정 구역), region은 그 위의 큰 구역 셋 + 나라.
+ */
+export function osmPlace(r) {
+  const lat = Number(r?.lat), lon = Number(r?.lon);
+  if (!r || r.lat == null || r.lon == null || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const ad = r.address || {}, units = UNITS.map(k => ad[k]).filter(Boolean);
+  const name = r.name || units[0];
+  if (!name) return null;
+  const upper = units.filter(u => u !== name).slice(-3);
+  return { name, region: [...upper, ad.country].filter(Boolean).join(' · '), lat, lon, elev: 0 };
+}
+
+/**
+ * 두 목록을 합친다. 앞 목록이 먼저, 뒤 목록에서는 이미 있는 곳(약 5km 안)을 빼되 해발은 넘겨받는다.
+ * 앞 목록 안에서 이름이 같고 자리도 같은 것은 하나만 남긴다.
+ */
+export function mergePlaces(first, second, max = 10) {
+  const near = (o, p) => Math.abs(o.lat - p.lat) < 0.05 && Math.abs(o.lon - p.lon) < 0.05;
+  const out = [];
+  for (const p of first) if (!out.some(o => o.name === p.name && near(o, p))) out.push({ ...p });
+  for (const p of second) {
+    const o = out.find(x => near(x, p));
+    if (!o) out.push({ ...p }); else if (!o.elev && p.elev) o.elev = p.elev;
+  }
+  return out.slice(0, max);
+}
+
+/** 지명 검색 → [{name, region, lat, lon, elev}]. 두 곳 모두 실패하면 던진다. */
 export async function searchPlace(q) {
-  const j = await getJson('https://geocoding-api.open-meteo.com/v1/search?' + new URLSearchParams({ name: q, language: 'ko', count: 8 }));
-  return (j.results || []).map(r => ({
+  const [osm, om] = await Promise.allSettled([
+    getJson(OSM + 'search?' + new URLSearchParams({ q, format: 'jsonv2', addressdetails: 1, limit: 8, 'accept-language': 'ko' }), 6000),
+    getJson('https://geocoding-api.open-meteo.com/v1/search?' + new URLSearchParams({ name: q, language: 'ko', count: 8 }), 6000),
+  ]);
+  if (osm.status === 'rejected' && om.status === 'rejected') throw osm.reason;
+  const a = osm.status === 'fulfilled' && Array.isArray(osm.value) ? osm.value.map(osmPlace).filter(Boolean) : [];
+  const b = om.status === 'fulfilled' ? (om.value.results || []).map(r => ({
     name: r.name, region: [r.admin2, r.admin1, r.country].filter(Boolean).join(' · '),
     lat: r.latitude, lon: r.longitude, elev: r.elevation ?? 0,
-  }));
+  })) : [];
+  return mergePlaces(a, b);
+}
+
+/** 좌표 → 그곳의 읍·면·동 이름과 지역. 좌표는 받은 그대로 두고, 밖으로는 약 100m로 뭉뚱그려 보낸다. 못 찾으면 null */
+export async function reversePlace(lat, lon) {
+  const r = await getJson(OSM + 'reverse?' + new URLSearchParams({ lat: lat.toFixed(3), lon: lon.toFixed(3), format: 'jsonv2', addressdetails: 1, zoom: 14, 'accept-language': 'ko' }), 5000);
+  const p = osmPlace({ ...r, name: null });          // 건물·길 이름이 아니라 행정 구역 이름을 쓴다
+  return p && { ...p, lat, lon };
 }

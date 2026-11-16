@@ -1,16 +1,16 @@
 // 위젯 배치 — 자료(widgetModel)를 그리기 명령 목록으로 바꾼다. 순수 계산이라 PC에서 SVG로 미리 본다.
 // 명령: rect · line · poly · circle · text (좌표는 pt, 글자의 y는 줄 상자의 위쪽)
-import { T } from './theme.js';
+import { T, setTheme } from './theme.js';
 import { bandHours } from './data.js';
 import { clock, cloudLine } from '../js/view.js';
 import { hourTicks, DASH, CLOUD_INK_FLIP } from '../js/charts.js';
-import { GRADE_KO, gradeSeeing, gradeJet, gradeDew } from '../js/model.js';
+import { GRADE_KO, gradeSeeing, gradeJet, gradeDew, gradeAod } from '../js/model.js';
 
 export const SIZES = { small: [158, 158], medium: [338, 158], large: [338, 354] };
 export const KINDS = {
-  점수: 'small', 달: 'small', 대기: 'small', 지금: 'small',
+  점수: 'small', 달: 'small', 대기: 'small', 지금: 'small', 날씨: 'small',
   판정: 'medium', 고도: 'medium', '5일': 'medium', 시간별: 'medium',
-  종합: 'large', 천체: 'large', 예보: 'large',
+  종합: 'large', 천체: 'large', 예보: 'large', 기상: 'large',
 };
 export const DEFAULT_KIND = { small: '점수', medium: '판정', large: '종합' };
 
@@ -62,10 +62,23 @@ function tag(c, g, x, y, size = 12, label = g ? GRADE_KO[g] : '') {
   return x + size * 1.05 + textWidth(label, size);
 }
 
+// 유리풍 바탕: 왼쪽 위가 밝은 비스듬한 빛. DrawContext에 그라데이션이 없어 좁은 띠로 나눠 칠한다(판 밖은 잘린다).
+const SHEEN = [[0, [38, 41, 48]], [0.42, [15, 16, 19]], [1, [6, 6, 7]]], RIM = '#ffffff24', CORNER = 22;
+function sheen(c, w, h) {
+  const dx = 0.5, dy = 0.866, U = dx * w + dy * h, L = w + h, N = 36;
+  const P = (u, s) => [u * dx - s * dy, u * dy + s * dx];
+  for (let i = 0; i < N; i++) {
+    const t = (i + 0.5) / N, k = t < SHEEN[1][0] ? 0 : 1, [t0, a] = SHEEN[k], [t1, b] = SHEEN[k + 1], f = (t - t0) / (t1 - t0);
+    const u0 = U * i / N, u1 = U * (i + 1) / N + 0.5;
+    const fill = '#' + a.map((x, j) => Math.round(x + (b[j] - x) * f).toString(16).padStart(2, '0')).join('');
+    c.poly([P(u0, -L), P(u0, L), P(u1, L), P(u1, -L)], { fill, close: true });
+  }
+}
+
 function frame(kind, title, right) {
   const [w, h] = SIZES[KINDS[kind]];
   const c = canvas(w, h);
-  c.rect(0, 0, w, h, { fill: T.card });
+  if (T.glass) sheen(c, w, h); else c.rect(0, 0, w, h, { fill: T.card });
   c.rect(0, 0, w, HEAD, { fill: T.band });
   c.line(0, HEAD, w, HEAD, T.edge);
   c.text(title, PAD, 6, { size: 11, weight: 'h' });
@@ -168,31 +181,57 @@ function altChart(c, m, v, bx, by, bw, bh) {
 }
 
 // ── 그림: 시간별 기상 띠 ───────────────────────────────
+// 띠의 줄: [이름, 값, 등급 함수 | 'cloud' | 'plain', 글자, 앞을 띄울지, 여러 시간을 한 칸으로 묶는 법]
 const BAND_ROWS = [
-  ['구름', h => h.cloud, null, v => Math.round(v)],
-  ['시상', h => h.seeing, gradeSeeing, v => v.toFixed(1)],
+  ['구름', h => h.cloud, 'cloud', v => Math.round(v), false, 'mean'],
+  ['시상', h => h.seeing, gradeSeeing, v => v.toFixed(1), false, 'max'],
+  ['제트', h => h.jet, gradeJet, v => Math.round(v), false, 'max'],
+  ['이슬', h => h.spread, gradeDew, v => v.toFixed(1), false, 'min'],
+];
+/** 여러 시간의 값을 한 칸으로: 구름은 평균, 등급이 있는 것은 나쁜 쪽(시상·제트는 큰 값, 이슬점 차는 작은 값). 값이 없으면 NaN */
+export function blockValue(values, how) {
+  const xs = values.filter(fin);
+  if (!xs.length) return NaN;
+  return how === 'max' ? Math.max(...xs) : how === 'min' ? Math.min(...xs) : xs.reduce((a, b) => a + b, 0) / xs.length;
+}
+// 본판 「관측 기상」과 같은 줄
+const WEATHER_ROWS = [
+  ['상층', h => h.high, 'cloud', v => Math.round(v)],
+  ['중층', h => h.mid, 'cloud', v => Math.round(v)],
+  ['하층', h => h.low, 'cloud', v => Math.round(v)],
+  ['시상', h => h.seeing, gradeSeeing, v => v.toFixed(1), true],
   ['제트', h => h.jet, gradeJet, v => Math.round(v)],
-  ['이슬', h => h.spread, gradeDew, v => v.toFixed(1)],
+  ['투명', h => h.aod, gradeAod, v => v.toFixed(2).replace(/^0/, '')],
+  ['이슬', h => h.spread, gradeDew, v => v.toFixed(0)],
+  ['기온', h => h.temp, 'plain', v => Math.round(v), true],
+  ['바람', h => h.wind10, 'plain', v => Math.round(v)],
 ];
 
-function bandChart(c, m, v, bx, by, bw, bh) {
-  const { hh } = clock(m.offMs), hours = bandHours(v);
+/** 기상 띠. step: 몇 시간을 한 칸으로 묶을지(작은 위젯은 3) */
+function bandChart(c, m, v, bx, by, bw, bh, list = BAND_ROWS, { step = 1, GX = 30, GAP = 5 } = {}) {
+  const { hh } = clock(m.offMs), all = bandHours(v), hours = [];
+  for (let i = 0; i < all.length; i += step) hours.push(all.slice(i, i + step));
   if (!hours.length) { c.text('예보 자료 없음', bx + bw / 2, by + bh / 2 - 8, { size: 12, color: T.ink3, align: 'c' }); return; }
-  const GX = 30, cw = (bw - GX - 4) / 12, rh = (bh - 13) / BAND_ROWS.length;
-  BAND_ROWS.forEach(([name, val, grade, fmt], r) => {
-    const y = by + r * rh, ty = y + (rh - 1 - 9.5 * 1.2) / 2;
+  const gaps = list.filter(r => r[4]).length;
+  const cw = (bw - GX - 4) / (12 / step), rh = (bh - 13 - gaps * GAP) / list.length;
+  let y = by;
+  list.forEach(([name, val, kind, fmt, gap, how]) => {
+    if (gap) y += GAP;
+    const ty = y + (rh - 1 - 9.5 * 1.2) / 2, grade = typeof kind === 'function' ? kind : null;
     c.text(name, bx + 4, y + (rh - 1 - 12) / 2, { size: 10, weight: 'b', color: T.ink3 });
     hours.forEach((h, i) => {
-      const x = bx + GX + i * cw, x_ = x + 0.5, w = cw - 1, hgt = rh - 1, value = val(h);
+      const x = bx + GX + i * cw, x_ = x + 0.5, w = cw - 1, hgt = rh - 1, value = blockValue(h.map(val), how);
       if (!fin(value)) { c.rect(x_, y, w, hgt, { fill: T.na, r: 3 }); return; }
       const g = grade ? grade(value) : null;
       if (g) c.rect(x_, y, w, hgt, { fill: T.cell[g], r: 3 });
+      else if (kind === 'plain') c.rect(x_, y, w, hgt, { fill: T.cell.p, r: 3 });
       else { c.rect(x_, y, w, hgt, { fill: T.cbase, r: 3 }); c.rect(x_, y, w, hgt, { fill: T.cloud, r: 3, alpha: Math.min(1, Math.max(0, value / 100)) }); }
-      c.text(fmt(value), x + cw / 2, ty, { size: 9.5, color: !g && Math.round(value) >= CLOUD_INK_FLIP ? T.bg : T.ink, align: 'c' });
+      c.text(fmt(value), x + cw / 2, ty, { size: 9.5, color: kind === 'cloud' && Math.round(value) >= CLOUD_INK_FLIP ? T.bg : T.ink, align: 'c' });
       if (g && g !== 'g') mark(c, g, x + cw - 4.5, y + 4.5, 2);
     });
+    y += rh;
   });
-  hours.forEach((h, i) => c.text(hh(h.t), bx + GX + i * cw + cw / 2, by + bh - 12, { size: 9, color: T.ink3, align: 'c' }));
+  hours.forEach((h, i) => c.text(hh(h[0].t), bx + GX + i * cw + cw / 2, by + bh - 12, { size: 9, color: T.ink3, align: 'c' }));
 }
 
 // ── 글귀 ───────────────────────────────────────────────
@@ -213,7 +252,7 @@ const cautionRow = (c, s) => (x, y) => {
   tag(c, 'b', x, y, 12, s.cautions.join(' · '));
 };
 
-// ── 위젯 11종 ──────────────────────────────────────────
+// ── 위젯 13종 ──────────────────────────────────────────
 const LAYOUTS = {
   점수(m) {
     const v = m.nights[0], s = v.summary, c = frame('점수', '오늘 밤', m.place.name);
@@ -296,6 +335,16 @@ const LAYOUTS = {
     bandChart(c, m, v, 8, 34, 322, 118);
     return c;
   },
+  날씨(m) {
+    const v = m.nights[0], c = frame('날씨', '관측 기상', m.place.name);
+    bandChart(c, m, v, 4, 34, 150, 118, BAND_ROWS, { step: 3, GX: 28 });
+    return c;
+  },
+  기상(m) {
+    const v = m.nights[0], c = frame('기상', '관측 기상', dateText(m, v));
+    bandChart(c, m, v, 8, 36, 322, 312, WEATHER_ROWS);
+    return c;
+  },
   종합(m) {
     const v = m.nights[0], s = v.summary, c = frame('종합', '오늘 밤', dateText(m, v));
     scoreBox(c, s, PAD, 36, 70, 66, 28, true);
@@ -337,9 +386,14 @@ const LAYOUTS = {
   },
 };
 
-/** kind의 위젯을 그리기 명령으로. 반환 {w, h, ops} */
-export function layout(kind, model) {
-  const c = LAYOUTS[kind](model);
+/** kind의 위젯을 그리기 명령으로. glass: 유리풍. 반환 {w, h, ops} */
+export function layout(kind, model, { glass = false } = {}) {
+  let c;
+  setTheme(glass);
+  try {
+    c = LAYOUTS[kind](model);
+    if (glass) c.rect(0.5, 0.5, c.w - 1, c.h - 1, { stroke: RIM, r: CORNER });
+  } finally { setTheme(false); }
   return { w: c.w, h: c.h, ops: c.ops };
 }
 

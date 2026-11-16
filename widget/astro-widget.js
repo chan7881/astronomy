@@ -640,8 +640,9 @@ function normalize(fc, air) {
   return { offsetSec: off, elev: fc.elevation, tz: fc.timezone, hours };
 }
 
-async function getJson(url) {
-  const r = await fetch(url);
+/** ms: 이 시간 안에 답이 없으면 그만둔다(없으면 기다린다) */
+async function getJson(url, ms) {
+  const r = await fetch(url, ms ? { signal: AbortSignal.timeout(ms) } : undefined);
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
@@ -659,16 +660,64 @@ async function loadForecast(lat, lon) {
   return data;
 }
 
-/** 지명 검색 → [{name, region, lat, lon, elev}] */
-async function searchPlace(q) {
-  const j = await getJson('https://geocoding-api.open-meteo.com/v1/search?' + new URLSearchParams({ name: q, language: 'ko', count: 8 }));
-  return (j.results || []).map(r => ({
-    name: r.name, region: [r.admin2, r.admin1, r.country].filter(Boolean).join(' · '),
-    lat: r.latitude, lon: r.longitude, elev: r.elevation ?? 0,
-  }));
+// ── 지명 ───────────────────────────────────────────────
+// 읍·면·동과 천문대 같은 곳은 OpenStreetMap(Nominatim)이, 세계 도시와 해발은 Open-Meteo가 잘 안다. 둘을 함께 쓴다.
+const OSM = 'https://nominatim.openstreetmap.org/';
+const UNITS = ['neighbourhood', 'quarter', 'hamlet', 'village', 'suburb', 'town', 'city_district', 'borough', 'district',
+  'municipality', 'city', 'county', 'state_district', 'province', 'state', 'region'];   // 작은 것부터
+
+/**
+ * Nominatim 결과 하나 → {name, region, lat, lon, elev}. 좌표가 없으면 null.
+ * 이름은 찾은 곳의 이름(없으면 가장 작은 행정 구역), region은 그 위의 큰 구역 셋 + 나라.
+ */
+function osmPlace(r) {
+  const lat = Number(r?.lat), lon = Number(r?.lon);
+  if (!r || r.lat == null || r.lon == null || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const ad = r.address || {}, units = UNITS.map(k => ad[k]).filter(Boolean);
+  const name = r.name || units[0];
+  if (!name) return null;
+  const upper = units.filter(u => u !== name).slice(-3);
+  return { name, region: [...upper, ad.country].filter(Boolean).join(' · '), lat, lon, elev: 0 };
 }
 
-return { forecastUrl, airUrl, localIsoToMs, normalize, loadForecast, searchPlace, LEVELS };
+/**
+ * 두 목록을 합친다. 앞 목록이 먼저, 뒤 목록에서는 이미 있는 곳(약 5km 안)을 빼되 해발은 넘겨받는다.
+ * 앞 목록 안에서 이름이 같고 자리도 같은 것은 하나만 남긴다.
+ */
+function mergePlaces(first, second, max = 10) {
+  const near = (o, p) => Math.abs(o.lat - p.lat) < 0.05 && Math.abs(o.lon - p.lon) < 0.05;
+  const out = [];
+  for (const p of first) if (!out.some(o => o.name === p.name && near(o, p))) out.push({ ...p });
+  for (const p of second) {
+    const o = out.find(x => near(x, p));
+    if (!o) out.push({ ...p }); else if (!o.elev && p.elev) o.elev = p.elev;
+  }
+  return out.slice(0, max);
+}
+
+/** 지명 검색 → [{name, region, lat, lon, elev}]. 두 곳 모두 실패하면 던진다. */
+async function searchPlace(q) {
+  const [osm, om] = await Promise.allSettled([
+    getJson(OSM + 'search?' + new URLSearchParams({ q, format: 'jsonv2', addressdetails: 1, limit: 8, 'accept-language': 'ko' }), 6000),
+    getJson('https://geocoding-api.open-meteo.com/v1/search?' + new URLSearchParams({ name: q, language: 'ko', count: 8 }), 6000),
+  ]);
+  if (osm.status === 'rejected' && om.status === 'rejected') throw osm.reason;
+  const a = osm.status === 'fulfilled' && Array.isArray(osm.value) ? osm.value.map(osmPlace).filter(Boolean) : [];
+  const b = om.status === 'fulfilled' ? (om.value.results || []).map(r => ({
+    name: r.name, region: [r.admin2, r.admin1, r.country].filter(Boolean).join(' · '),
+    lat: r.latitude, lon: r.longitude, elev: r.elevation ?? 0,
+  })) : [];
+  return mergePlaces(a, b);
+}
+
+/** 좌표 → 그곳의 읍·면·동 이름과 지역. 좌표는 받은 그대로 두고, 밖으로는 약 100m로 뭉뚱그려 보낸다. 못 찾으면 null */
+async function reversePlace(lat, lon) {
+  const r = await getJson(OSM + 'reverse?' + new URLSearchParams({ lat: lat.toFixed(3), lon: lon.toFixed(3), format: 'jsonv2', addressdetails: 1, zoom: 14, 'accept-language': 'ko' }), 5000);
+  const p = osmPlace({ ...r, name: null });          // 건물·길 이름이 아니라 행정 구역 이름을 쓴다
+  return p && { ...p, lat, lon };
+}
+
+return { forecastUrl, airUrl, localIsoToMs, normalize, loadForecast, osmPlace, mergePlaces, searchPlace, reversePlace, LEVELS };
 })();
 // ── js/view.js
 __m["js/view.js"] = (() => {
@@ -807,21 +856,31 @@ return { highestBody, nowTime, bandHours, widgetModel };
 })();
 // ── widget/theme.js
 __m["widget/theme.js"] = (() => {
-// 위젯 색 — style.css의 어두운 테마와 같은 값
-const T = {
-  bg: '#05080f', card: '#0c1220', band: '#131b2e', line: '#27314a', edge: '#33405f',
-  ink: '#eef2fa', ink2: '#aab4cb', ink3: '#8592b0',
-  g: '#3fb68b', m: '#d6a740', b: '#e0685c',
-  cell: { g: '#1d4d42', m: '#574a22', b: '#5c2b2a' }, na: '#10182a',
-  cloud: '#e2e8f4', cbase: '#1a2440',
-  tw: ['#3b4a72', '#2c3960', '#202b4d', '#161f3b', '#0a1022'],
+// 위젯 색 — FLAT은 style.css의 어두운 테마와 같은 값.
+// 유리풍(GLASS)은 같은 색에 반투명 칸(#rrggbbaa)을 쓰고, 바탕은 layout.js가 비스듬한 빛으로 칠한다.
+const FLAT = {
+  glass: false,
+  bg: '#020203', card: '#0a0b0d', band: '#101114', line: '#1e2026', edge: '#2a2d35',
+  ink: '#d6d9df', ink2: '#989ea9', ink3: '#727986',
+  g: '#4d9a80', m: '#b3964e', b: '#bd6a61',
+  cell: { g: '#16362f', m: '#3a331d', b: '#402423', p: '#15181f' }, na: '#0c0d10',
+  cloud: '#c2c7d0', cbase: '#13151a',
+  tw: ['#262b38', '#1d212c', '#151821', '#0e1016', '#07080b'],
   body: {
-    Moon: '#d5dae3', Mercury: '#a493e8', Venus: '#f3c9b0', Mars: '#ef6f62',
-    Jupiter: '#dd9a5e', Saturn: '#e8c95a', Uranus: '#5fd0c8', Neptune: '#6c9bf2',
+    Moon: '#c2c6ce', Mercury: '#9589c4', Venus: '#d6b7a4', Mars: '#c96b61',
+    Jupiter: '#c08c5e', Saturn: '#c8b15c', Uranus: '#62b0aa', Neptune: '#6e8ecb',
   },
 };
+const GLASS = {
+  glass: true,
+  card: '#0c0d10', band: '#ffffff0d', line: '#ffffff14', edge: '#ffffff26',
+  cell: { g: '#4d9a8052', m: '#b3964e4d', b: '#bd6a6152', p: '#ffffff12' }, na: '#ffffff08', cbase: '#ffffff12',
+};
+const T = { ...FLAT };
+/** 그리기 전에 색을 고른다. glass: 유리풍 */
+function setTheme(glass) { Object.assign(T, FLAT, glass ? GLASS : null); }
 
-return { T };
+return { setTheme, T };
 })();
 // ── js/charts.js
 __m["js/charts.js"] = (() => {
@@ -904,8 +963,8 @@ ${labels.join('')}
 
 const clampN = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
-/** 구름 칸 숫자는 이 값(%)부터 어두운 글자로 바꾼다 — 칸이 밝아져 밝은 글자의 대비가 4:1 아래로 내려가는 지점 */
-const CLOUD_INK_FLIP = 40;
+/** 구름 칸 숫자는 이 값(%)부터 어두운 글자로 바꾼다 — 칸이 밝아져 어두운 글자의 대비가 밝은 글자를 앞서는 지점(둘 다 약 3.8:1) */
+const CLOUD_INK_FLIP = 48;
 
 /**
  * 기상 띠. rows: [{label, kind:'cloud'|'grade'|'plain', value(h), text?(h), grade?(v)}]
@@ -949,17 +1008,17 @@ return { scale, hourTicks, altitudeChart, bandChart, W, GUTTER, PLOT_H, DASH, al
 __m["widget/layout.js"] = (() => {
 // 위젯 배치 — 자료(widgetModel)를 그리기 명령 목록으로 바꾼다. 순수 계산이라 PC에서 SVG로 미리 본다.
 // 명령: rect · line · poly · circle · text (좌표는 pt, 글자의 y는 줄 상자의 위쪽)
-const { T } = __m["widget/theme.js"];
+const { T, setTheme } = __m["widget/theme.js"];
 const { bandHours } = __m["widget/data.js"];
 const { clock, cloudLine } = __m["js/view.js"];
 const { hourTicks, DASH, CLOUD_INK_FLIP } = __m["js/charts.js"];
-const { GRADE_KO, gradeSeeing, gradeJet, gradeDew } = __m["js/model.js"];
+const { GRADE_KO, gradeSeeing, gradeJet, gradeDew, gradeAod } = __m["js/model.js"];
 
 const SIZES = { small: [158, 158], medium: [338, 158], large: [338, 354] };
 const KINDS = {
-  점수: 'small', 달: 'small', 대기: 'small', 지금: 'small',
+  점수: 'small', 달: 'small', 대기: 'small', 지금: 'small', 날씨: 'small',
   판정: 'medium', 고도: 'medium', '5일': 'medium', 시간별: 'medium',
-  종합: 'large', 천체: 'large', 예보: 'large',
+  종합: 'large', 천체: 'large', 예보: 'large', 기상: 'large',
 };
 const DEFAULT_KIND = { small: '점수', medium: '판정', large: '종합' };
 
@@ -1011,10 +1070,23 @@ function tag(c, g, x, y, size = 12, label = g ? GRADE_KO[g] : '') {
   return x + size * 1.05 + textWidth(label, size);
 }
 
+// 유리풍 바탕: 왼쪽 위가 밝은 비스듬한 빛. DrawContext에 그라데이션이 없어 좁은 띠로 나눠 칠한다(판 밖은 잘린다).
+const SHEEN = [[0, [38, 41, 48]], [0.42, [15, 16, 19]], [1, [6, 6, 7]]], RIM = '#ffffff24', CORNER = 22;
+function sheen(c, w, h) {
+  const dx = 0.5, dy = 0.866, U = dx * w + dy * h, L = w + h, N = 36;
+  const P = (u, s) => [u * dx - s * dy, u * dy + s * dx];
+  for (let i = 0; i < N; i++) {
+    const t = (i + 0.5) / N, k = t < SHEEN[1][0] ? 0 : 1, [t0, a] = SHEEN[k], [t1, b] = SHEEN[k + 1], f = (t - t0) / (t1 - t0);
+    const u0 = U * i / N, u1 = U * (i + 1) / N + 0.5;
+    const fill = '#' + a.map((x, j) => Math.round(x + (b[j] - x) * f).toString(16).padStart(2, '0')).join('');
+    c.poly([P(u0, -L), P(u0, L), P(u1, L), P(u1, -L)], { fill, close: true });
+  }
+}
+
 function frame(kind, title, right) {
   const [w, h] = SIZES[KINDS[kind]];
   const c = canvas(w, h);
-  c.rect(0, 0, w, h, { fill: T.card });
+  if (T.glass) sheen(c, w, h); else c.rect(0, 0, w, h, { fill: T.card });
   c.rect(0, 0, w, HEAD, { fill: T.band });
   c.line(0, HEAD, w, HEAD, T.edge);
   c.text(title, PAD, 6, { size: 11, weight: 'h' });
@@ -1117,31 +1189,57 @@ function altChart(c, m, v, bx, by, bw, bh) {
 }
 
 // ── 그림: 시간별 기상 띠 ───────────────────────────────
+// 띠의 줄: [이름, 값, 등급 함수 | 'cloud' | 'plain', 글자, 앞을 띄울지, 여러 시간을 한 칸으로 묶는 법]
 const BAND_ROWS = [
-  ['구름', h => h.cloud, null, v => Math.round(v)],
-  ['시상', h => h.seeing, gradeSeeing, v => v.toFixed(1)],
+  ['구름', h => h.cloud, 'cloud', v => Math.round(v), false, 'mean'],
+  ['시상', h => h.seeing, gradeSeeing, v => v.toFixed(1), false, 'max'],
+  ['제트', h => h.jet, gradeJet, v => Math.round(v), false, 'max'],
+  ['이슬', h => h.spread, gradeDew, v => v.toFixed(1), false, 'min'],
+];
+/** 여러 시간의 값을 한 칸으로: 구름은 평균, 등급이 있는 것은 나쁜 쪽(시상·제트는 큰 값, 이슬점 차는 작은 값). 값이 없으면 NaN */
+function blockValue(values, how) {
+  const xs = values.filter(fin);
+  if (!xs.length) return NaN;
+  return how === 'max' ? Math.max(...xs) : how === 'min' ? Math.min(...xs) : xs.reduce((a, b) => a + b, 0) / xs.length;
+}
+// 본판 「관측 기상」과 같은 줄
+const WEATHER_ROWS = [
+  ['상층', h => h.high, 'cloud', v => Math.round(v)],
+  ['중층', h => h.mid, 'cloud', v => Math.round(v)],
+  ['하층', h => h.low, 'cloud', v => Math.round(v)],
+  ['시상', h => h.seeing, gradeSeeing, v => v.toFixed(1), true],
   ['제트', h => h.jet, gradeJet, v => Math.round(v)],
-  ['이슬', h => h.spread, gradeDew, v => v.toFixed(1)],
+  ['투명', h => h.aod, gradeAod, v => v.toFixed(2).replace(/^0/, '')],
+  ['이슬', h => h.spread, gradeDew, v => v.toFixed(0)],
+  ['기온', h => h.temp, 'plain', v => Math.round(v), true],
+  ['바람', h => h.wind10, 'plain', v => Math.round(v)],
 ];
 
-function bandChart(c, m, v, bx, by, bw, bh) {
-  const { hh } = clock(m.offMs), hours = bandHours(v);
+/** 기상 띠. step: 몇 시간을 한 칸으로 묶을지(작은 위젯은 3) */
+function bandChart(c, m, v, bx, by, bw, bh, list = BAND_ROWS, { step = 1, GX = 30, GAP = 5 } = {}) {
+  const { hh } = clock(m.offMs), all = bandHours(v), hours = [];
+  for (let i = 0; i < all.length; i += step) hours.push(all.slice(i, i + step));
   if (!hours.length) { c.text('예보 자료 없음', bx + bw / 2, by + bh / 2 - 8, { size: 12, color: T.ink3, align: 'c' }); return; }
-  const GX = 30, cw = (bw - GX - 4) / 12, rh = (bh - 13) / BAND_ROWS.length;
-  BAND_ROWS.forEach(([name, val, grade, fmt], r) => {
-    const y = by + r * rh, ty = y + (rh - 1 - 9.5 * 1.2) / 2;
+  const gaps = list.filter(r => r[4]).length;
+  const cw = (bw - GX - 4) / (12 / step), rh = (bh - 13 - gaps * GAP) / list.length;
+  let y = by;
+  list.forEach(([name, val, kind, fmt, gap, how]) => {
+    if (gap) y += GAP;
+    const ty = y + (rh - 1 - 9.5 * 1.2) / 2, grade = typeof kind === 'function' ? kind : null;
     c.text(name, bx + 4, y + (rh - 1 - 12) / 2, { size: 10, weight: 'b', color: T.ink3 });
     hours.forEach((h, i) => {
-      const x = bx + GX + i * cw, x_ = x + 0.5, w = cw - 1, hgt = rh - 1, value = val(h);
+      const x = bx + GX + i * cw, x_ = x + 0.5, w = cw - 1, hgt = rh - 1, value = blockValue(h.map(val), how);
       if (!fin(value)) { c.rect(x_, y, w, hgt, { fill: T.na, r: 3 }); return; }
       const g = grade ? grade(value) : null;
       if (g) c.rect(x_, y, w, hgt, { fill: T.cell[g], r: 3 });
+      else if (kind === 'plain') c.rect(x_, y, w, hgt, { fill: T.cell.p, r: 3 });
       else { c.rect(x_, y, w, hgt, { fill: T.cbase, r: 3 }); c.rect(x_, y, w, hgt, { fill: T.cloud, r: 3, alpha: Math.min(1, Math.max(0, value / 100)) }); }
-      c.text(fmt(value), x + cw / 2, ty, { size: 9.5, color: !g && Math.round(value) >= CLOUD_INK_FLIP ? T.bg : T.ink, align: 'c' });
+      c.text(fmt(value), x + cw / 2, ty, { size: 9.5, color: kind === 'cloud' && Math.round(value) >= CLOUD_INK_FLIP ? T.bg : T.ink, align: 'c' });
       if (g && g !== 'g') mark(c, g, x + cw - 4.5, y + 4.5, 2);
     });
+    y += rh;
   });
-  hours.forEach((h, i) => c.text(hh(h.t), bx + GX + i * cw + cw / 2, by + bh - 12, { size: 9, color: T.ink3, align: 'c' }));
+  hours.forEach((h, i) => c.text(hh(h[0].t), bx + GX + i * cw + cw / 2, by + bh - 12, { size: 9, color: T.ink3, align: 'c' }));
 }
 
 // ── 글귀 ───────────────────────────────────────────────
@@ -1162,7 +1260,7 @@ const cautionRow = (c, s) => (x, y) => {
   tag(c, 'b', x, y, 12, s.cautions.join(' · '));
 };
 
-// ── 위젯 11종 ──────────────────────────────────────────
+// ── 위젯 13종 ──────────────────────────────────────────
 const LAYOUTS = {
   점수(m) {
     const v = m.nights[0], s = v.summary, c = frame('점수', '오늘 밤', m.place.name);
@@ -1245,6 +1343,16 @@ const LAYOUTS = {
     bandChart(c, m, v, 8, 34, 322, 118);
     return c;
   },
+  날씨(m) {
+    const v = m.nights[0], c = frame('날씨', '관측 기상', m.place.name);
+    bandChart(c, m, v, 4, 34, 150, 118, BAND_ROWS, { step: 3, GX: 28 });
+    return c;
+  },
+  기상(m) {
+    const v = m.nights[0], c = frame('기상', '관측 기상', dateText(m, v));
+    bandChart(c, m, v, 8, 36, 322, 312, WEATHER_ROWS);
+    return c;
+  },
   종합(m) {
     const v = m.nights[0], s = v.summary, c = frame('종합', '오늘 밤', dateText(m, v));
     scoreBox(c, s, PAD, 36, 70, 66, 28, true);
@@ -1286,9 +1394,14 @@ const LAYOUTS = {
   },
 };
 
-/** kind의 위젯을 그리기 명령으로. 반환 {w, h, ops} */
-function layout(kind, model) {
-  const c = LAYOUTS[kind](model);
+/** kind의 위젯을 그리기 명령으로. glass: 유리풍. 반환 {w, h, ops} */
+function layout(kind, model, { glass = false } = {}) {
+  let c;
+  setTheme(glass);
+  try {
+    c = LAYOUTS[kind](model);
+    if (glass) c.rect(0.5, 0.5, c.w - 1, c.h - 1, { stroke: RIM, r: CORNER });
+  } finally { setTheme(false); }
   return { w: c.w, h: c.h, ops: c.ops };
 }
 
@@ -1327,7 +1440,7 @@ function lockCircle(kind, m) {
   return { w: c.w, h: c.h, ops: c.ops };
 }
 
-return { textWidth, fit, moonShape, dashes, layout, lockText, lockCircle, SIZES, KINDS, DEFAULT_KIND };
+return { textWidth, fit, moonShape, dashes, blockValue, layout, lockText, lockCircle, SIZES, KINDS, DEFAULT_KIND };
 })();
 // ── js/places.js
 __m["js/places.js"] = (() => {
@@ -1352,15 +1465,16 @@ function toggleFavorite(p) {
 const loadTheme = () => get('theme', 'dark');
 const saveTheme = t => set('theme', t);
 
-/** 현재 위치 → {lat, lon} */
-function locate() {
-  return new Promise((res, rej) => {
-    if (!navigator.geolocation) return rej(new Error('위치 기능 없음'));
-    navigator.geolocation.getCurrentPosition(
-      p => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
-      e => rej(new Error(e.code === 1 ? '위치 권한이 꺼져 있습니다' : '위치를 찾지 못했습니다')),
-      { timeout: 10000, maximumAge: 600000 });
-  });
+/**
+ * 현재 위치 → {lat, lon}. 먼저 GPS로 새 위치를 재고(1분 넘은 것은 안 쓴다),
+ * 실내·PC처럼 GPS가 안 잡히면 대강의 위치(10분 안의 것 포함)로 한 번 더 잰다.
+ */
+function locate(geo = globalThis.navigator?.geolocation) {
+  const ask = opt => new Promise((res, rej) => geo.getCurrentPosition(p => res({ lat: p.coords.latitude, lon: p.coords.longitude }), rej, opt));
+  if (!geo) return Promise.reject(new Error('위치 기능 없음'));
+  return ask({ enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 })
+    .catch(e => (e.code === 1 ? Promise.reject(e) : ask({ enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 })))
+    .catch(e => Promise.reject(new Error(e.code === 1 ? '위치 권한이 꺼져 있습니다' : '위치를 찾지 못했습니다')));
 }
 
 /**
@@ -1393,23 +1507,28 @@ return { toggleFavorite, locate, parseCoords, DEFAULT_PLACE, samePlace, loadPlac
 })();
 // ── widget/param.js
 __m["widget/param.js"] = (() => {
-// 위젯 설정값(Parameter) 읽기: 「종류 | 좌표 | 이름」을 아무 순서로, |·;·쉼표 어느 것으로 나눠도 된다.
+// 위젯 설정값(Parameter) 읽기: 「종류 | 좌표 | 이름 | 유리」를 아무 순서로, |·;·쉼표 어느 것으로 나눠도 된다.
 // 예) 천체 | 36.17, 128.98 | 보현산   이름만 적고 좌표가 없으면 관측지는 포항 그대로다(위젯 머리에 포항이라고 나온다).
 const { DEFAULT_PLACE, parseCoords } = __m["js/places.js"];
 const { KINDS, DEFAULT_KIND } = __m["widget/layout.js"];
 
-const ALIAS = { 기상: '시간별', 띠: '시간별', 곡선: '고도', 밤하늘: '고도', 출몰: '천체', 행성: '지금', 시상: '대기', '5일밤': '5일' };
+// 기상만 보여 주는 위젯은 크기마다 이름이 다르다 — 어느 이름을 적어도 그 크기의 것으로
+const WEATHER = { small: '날씨', medium: '시간별', large: '기상' };
+const ALIAS = { 띠: '시간별', 곡선: '고도', 밤하늘: '고도', 출몰: '천체', 행성: '지금', 시상: '대기', '5일밤': '5일' };
 
 /**
  * text: 위젯 설정값(없으면 null), family: small|medium|large|extraLarge|accessory…
- * 반환 {kind, place}. 종류가 없거나 그 크기에 맞지 않으면 그 크기의 기본 위젯.
+ * 반환 {kind, place, glass}. 종류가 없거나 그 크기에 맞지 않으면 그 크기의 기본 위젯. 「유리」가 있으면 glass.
  */
 function parseParam(text, family) {
   const size = family === 'extraLarge' ? 'large' : family;
-  let kind = null, coords = null, name = null;
+  let kind = null, coords = null, name = null, glass = false;
   const toks = String(text ?? '').split(/[|;,\n]/).map(t => t.trim()).filter(Boolean);
   for (let i = 0; i < toks.length; i++) {
-    const tok = toks[i], k = ALIAS[tok.replace(/\s/g, '')] || tok.replace(/\s/g, '');
+    const tok = toks[i], bare = tok.replace(/\s/g, '');
+    if (bare === '유리') { glass = true; continue; }
+    let k = ALIAS[bare] || bare;
+    if (Object.values(WEATHER).includes(k) && WEATHER[size]) k = WEATHER[size];
     const pair = i + 1 < toks.length ? parseCoords(tok + ', ' + toks[i + 1]) : null;   // 쉼표로 갈라진 위도, 경도
     if (KINDS[k]) kind = kind || k;
     else if (pair) { coords = coords || pair; i++; }
@@ -1418,7 +1537,7 @@ function parseParam(text, family) {
   }
   if (DEFAULT_KIND[size] && (!kind || KINDS[kind] !== size)) kind = DEFAULT_KIND[size];
   const place = coords ? { name: name || '관측지', lat: coords.lat, lon: coords.lon, elev: 0 } : { ...DEFAULT_PLACE };
-  return { kind, place };
+  return { kind, place, glass };
 }
 
 return { parseParam };
@@ -1456,6 +1575,9 @@ async function loadData(place) {
   }
 }
 
+// '#rrggbb' 또는 '#rrggbbaa'
+const col = (hex, a = 1) => (hex.length === 9 ? new Color(hex.slice(0, 7), a * parseInt(hex.slice(7), 16) / 255) : new Color(hex, a));
+
 const FONT = { m: s => Font.mediumSystemFont(s), b: s => Font.boldSystemFont(s), h: s => Font.heavySystemFont(s) };
 
 function trace(o) {
@@ -1480,16 +1602,16 @@ function paint({ w, h, ops }, opaque) {
   for (const o of ops) {
     if (o.op === 'text') {
       const BIG = 400, x = o.align === 'l' ? o.x : o.align === 'c' ? o.x - BIG / 2 : o.x - BIG;
-      d.setFont(FONT[o.weight](o.size)); d.setTextColor(new Color(o.color, 1));
+      d.setFont(FONT[o.weight](o.size)); d.setTextColor(col(o.color));
       if (o.align === 'l') d.setTextAlignedLeft(); else if (o.align === 'c') d.setTextAlignedCenter(); else d.setTextAlignedRight();
       d.drawTextInRect(o.text, new Rect(x, o.y, BIG, o.size * 1.4));
       continue;
     }
     if (o.op === 'rect' && !(o.w > 0 && o.h > 0)) continue;
     const a = o.alpha == null ? 1 : o.alpha;
-    if (o.op === 'line') { d.addPath(trace(o)); d.setStrokeColor(new Color(o.color, 1)); d.setLineWidth(o.sw); d.strokePath(); continue; }
-    if (o.fill) { d.addPath(trace(o)); d.setFillColor(new Color(o.fill, a)); d.fillPath(); }
-    if (o.stroke) { d.addPath(trace(o)); d.setStrokeColor(new Color(o.stroke, a)); d.setLineWidth(o.sw == null ? 1 : o.sw); d.strokePath(); }
+    if (o.op === 'line') { d.addPath(trace(o)); d.setStrokeColor(col(o.color)); d.setLineWidth(o.sw); d.strokePath(); continue; }
+    if (o.fill) { d.addPath(trace(o)); d.setFillColor(col(o.fill, a)); d.fillPath(); }
+    if (o.stroke) { d.addPath(trace(o)); d.setStrokeColor(col(o.stroke, a)); d.setLineWidth(o.sw == null ? 1 : o.sw); d.strokePath(); }
   }
   return d.getImage();
 }
@@ -1510,7 +1632,7 @@ function lockWidget(family, kind, model) {
 
 async function run() {
   const family = config.widgetFamily || 'large';
-  const { kind, place } = parseParam(args.widgetParameter, family);
+  const { kind, place, glass } = parseParam(args.widgetParameter, family);
   const data = await loadData(place);
   const model = widgetModel(makeSky(Astronomy), place, data, Date.now());
   let w;
@@ -1518,7 +1640,7 @@ async function run() {
   else {
     w = new ListWidget();
     w.setPadding(0, 0, 0, 0);
-    w.backgroundImage = paint(layout(kind, model), true);
+    w.backgroundImage = paint(layout(kind, model, { glass }), true);
   }
   w.url = SITE;
   w.refreshAfterDate = new Date(Date.now() + TTL);

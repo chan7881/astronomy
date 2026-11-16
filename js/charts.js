@@ -77,8 +77,8 @@ ${labels.join('')}
 
 const clampN = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
-/** 구름 칸 숫자는 이 값(%)부터 어두운 글자로 바꾼다 — 칸이 밝아져 밝은 글자의 대비가 4:1 아래로 내려가는 지점 */
-export const CLOUD_INK_FLIP = 40;
+/** 구름 칸 숫자는 이 값(%)부터 어두운 글자로 바꾼다 — 칸이 밝아져 어두운 글자의 대비가 밝은 글자를 앞서는 지점(둘 다 약 3.8:1) */
+export const CLOUD_INK_FLIP = 48;
 
 /**
  * 기상 띠. rows: [{label, kind:'cloud'|'grade'|'plain', value(h), text?(h), grade?(v)}]

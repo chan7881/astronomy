@@ -19,15 +19,16 @@ export function toggleFavorite(p) {
 export const loadTheme = () => get('theme', 'dark');
 export const saveTheme = t => set('theme', t);
 
-/** 현재 위치 → {lat, lon} */
-export function locate() {
-  return new Promise((res, rej) => {
-    if (!navigator.geolocation) return rej(new Error('위치 기능 없음'));
-    navigator.geolocation.getCurrentPosition(
-      p => res({ lat: p.coords.latitude, lon: p.coords.longitude }),
-      e => rej(new Error(e.code === 1 ? '위치 권한이 꺼져 있습니다' : '위치를 찾지 못했습니다')),
-      { timeout: 10000, maximumAge: 600000 });
-  });
+/**
+ * 현재 위치 → {lat, lon}. 먼저 GPS로 새 위치를 재고(1분 넘은 것은 안 쓴다),
+ * 실내·PC처럼 GPS가 안 잡히면 대강의 위치(10분 안의 것 포함)로 한 번 더 잰다.
+ */
+export function locate(geo = globalThis.navigator?.geolocation) {
+  const ask = opt => new Promise((res, rej) => geo.getCurrentPosition(p => res({ lat: p.coords.latitude, lon: p.coords.longitude }), rej, opt));
+  if (!geo) return Promise.reject(new Error('위치 기능 없음'));
+  return ask({ enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 })
+    .catch(e => (e.code === 1 ? Promise.reject(e) : ask({ enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 })))
+    .catch(e => Promise.reject(new Error(e.code === 1 ? '위치 권한이 꺼져 있습니다' : '위치를 찾지 못했습니다')));
 }
 
 /**

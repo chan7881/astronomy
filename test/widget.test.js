@@ -6,7 +6,7 @@ import { makeSky } from '../js/sky.js';
 import { normalize, LEVELS } from '../js/api.js';
 import { baseNoon, nightView } from '../js/view.js';
 import { widgetModel, highestBody, bandHours } from '../widget/data.js';
-import { layout, lockText, lockCircle, moonShape, dashes, textWidth, fit, KINDS, SIZES } from '../widget/layout.js';
+import { layout, lockText, lockCircle, moonShape, dashes, textWidth, fit, blockValue, KINDS, SIZES } from '../widget/layout.js';
 import { parseParam } from '../widget/param.js';
 import { toSvg } from '../widget/svg.js';
 import { T } from '../widget/theme.js';
@@ -117,7 +117,7 @@ test('점선: 그린 길이와 조각 수', () => {
 });
 
 test('설정값: 종류·좌표·이름을 아무 순서로, 크기에 맞지 않으면 기본 위젯', () => {
-  assert.deepEqual(parseParam(null, 'small'), { kind: '점수', place: { ...POHANG, region: '경상북도 · 대한민국' } });
+  assert.deepEqual(parseParam(null, 'small'), { kind: '점수', place: { ...POHANG, region: '경상북도 · 대한민국' }, glass: false });
   assert.equal(parseParam('달', 'small').kind, '달');
   assert.equal(parseParam('달', 'medium').kind, '판정');
   assert.equal(parseParam('5일 ', 'medium').kind, '5일');
@@ -131,11 +131,12 @@ test('설정값: 종류·좌표·이름을 아무 순서로, 크기에 맞지 �
   assert.equal(parseParam('', 'accessoryCircular').kind, null);
 });
 
-test('배치: 11종 모두 크기에 맞고, 좌표가 유한하고, 글자가 판 밖으로 나가지 않는다', () => {
-  for (const opt of [{}, { cloud: 95, dew: 9.5 }]) {
+test('배치: 13종 모두 크기에 맞고, 좌표가 유한하고, 글자가 판 밖으로 나가지 않는다', () => {
+  assert.equal(Object.keys(KINDS).length, 13);
+  for (const opt of [{}, { cloud: 95, dew: 9.5 }, { glass: true }]) {
     const m = model(opt);
     for (const kind of Object.keys(KINDS)) {
-      const spec = layout(kind, m), [w, h] = SIZES[KINDS[kind]];
+      const spec = layout(kind, m, opt), [w, h] = SIZES[KINDS[kind]];
       assert.deepEqual([spec.w, spec.h], [w, h], kind);
       assert.ok(spec.ops.length > 5, kind);
       for (const o of spec.ops) {
@@ -151,7 +152,7 @@ test('배치: 11종 모두 크기에 맞고, 좌표가 유한하고, 글자가 �
   }
 });
 
-test('배치: 자료가 없어도(예보 실패) 11종이 그려진다', () => {
+test('배치: 자료가 없어도(예보 실패) 13종이 그려진다', () => {
   const m = widgetModel(sky, POHANG, null, NOW);
   assert.equal(m.nights[0].summary, null);
   for (const kind of Object.keys(KINDS)) assert.ok(layout(kind, m).ops.length > 3, kind);
@@ -170,13 +171,13 @@ test('배치: 점수·등급·달 글귀가 자료와 같다', () => {
   assert.equal(lockText(m).title, `관측 ${Math.round(s.score)} · 좋음`);
 });
 
-test('배치: 구름 칸은 등급색이 아니라 구름 양만큼 밝아지고, 40%부터 어두운 글자', () => {
+test('배치: 구름 칸은 등급색이 아니라 구름 양만큼 밝아지고, 48%부터 어두운 글자', () => {
   const cell = cloud => {
     const ops = layout('시간별', model({ cloud })).ops, i = ops.findIndex(o => o.op === 'text' && o.text === String(cloud) && o.size === 9.5);
     return { text: ops[i], base: ops[i - 2], over: ops[i - 1] };
   };
-  const lo = cell(39), hi = cell(40);
-  assert.equal(lo.base.fill, T.cbase); assert.equal(lo.over.fill, T.cloud); assert.equal(lo.over.alpha, 0.39);
+  const lo = cell(47), hi = cell(48);
+  assert.equal(lo.base.fill, T.cbase); assert.equal(lo.over.fill, T.cloud); assert.equal(lo.over.alpha, 0.47);
   assert.equal(lo.text.color, T.ink);
   assert.equal(hi.text.color, T.bg);
 });
@@ -218,7 +219,7 @@ test('묶음: 가짜 Scriptable에서 모든 크기·종류가 오류 없이 위
   const { code } = bundle();
   const now = Date.now(), start = new Date(now + KST - 36 * 3600e3).toISOString().slice(0, 13) + ':00';
   let { fc, air } = fakeForecast(start, 24 * 7);
-  const cases = [...Object.entries(KINDS).map(([k, f]) => [f, k]), ['small', null], ['extraLarge', '천체'],
+  const cases = [...Object.entries(KINDS).map(([k, f]) => [f, k]), ['small', null], ['extraLarge', '천체'], ['large', '기상 | 유리'], ['small', '유리'],
     ['accessoryInline', null], ['accessoryRectangular', null], ['accessoryCircular', null], ['accessoryCircular', '달']];
   const runCase = async (family, param, src) => {
     const log = { calls: [], widget: null, requests: [], files: {} };
@@ -240,7 +241,8 @@ test('묶음: 가짜 Scriptable에서 모든 크기·종류가 오류 없이 위
       Request: class { constructor(url) { this.url = url; log.requests.push(url); } async loadJSON() { return JSON.parse(JSON.stringify(this.url.includes('air-quality') ? air : fc)); }
         async loadString() { this.response = { statusCode: 200 }; return code; } },
       FileManager: { local: () => ({ cacheDirectory: () => '/c', libraryDirectory: () => '/l', modificationDate: () => new Date(), joinPath: (a, b) => a + '/' + b, fileExists: p => p in log.files, readString: p => log.files[p], writeString: (p, s) => { log.files[p] = s; } }) },
-      ListWidget, DrawContext, Path, Size: rec('Size'), Rect: rec('Rect'), Point: rec('Point'), Color: rec('Color'),
+      ListWidget, DrawContext, Path, Size: rec('Size'), Rect: rec('Rect'), Point: rec('Point'),
+      Color: class { constructor(hex, a) { assert.match(hex, /^#[0-9a-f]{6}$/, 'Scriptable의 Color는 #rrggbb만 받는다'); assert.ok(a >= 0 && a <= 1, `알파 ${a}`); } },
       Font: { mediumSystemFont: font, boldSystemFont: font, heavySystemFont: font, systemFont: font },
     });
     await vm.runInContext(`(async () => {\n${src}\n})()`, ctx);
@@ -306,6 +308,97 @@ test('배치: 긴 관측지 이름은 머리띠에서 잘린다', () => {
 });
 
 test('배치: 구름 글자색은 보이는 숫자(반올림)로 정한다', () => {
-  const ops = layout('시간별', model({ cloud: 39.6 })).ops;
-  assert.equal(ops.find(o => o.op === 'text' && o.text === '40' && o.size === 9.5).color, T.bg);
+  const ops = layout('시간별', model({ cloud: 47.6 })).ops;
+  assert.equal(ops.find(o => o.op === 'text' && o.text === '48' && o.size === 9.5).color, T.bg);
+});
+
+test('설정값: 기상만 보는 위젯은 어느 이름을 적어도 그 크기의 것, 「유리」는 유리풍', () => {
+  for (const name of ['기상', '날씨', '시간별']) {
+    assert.deepEqual(['small', 'medium', 'large', 'extraLarge'].map(f => parseParam(name, f).kind), ['날씨', '시간별', '기상', '기상'], name);
+  }
+  assert.equal(parseParam('기상', 'accessoryCircular').kind, '기상');
+  const p = parseParam('유리 | 기상 | 36.17, 128.98 | 보현산', 'large');
+  assert.deepEqual([p.kind, p.glass, p.place.name, p.place.lat], ['기상', true, '보현산', 36.17]);
+  assert.equal(parseParam('유리', 'medium').kind, '판정');
+  assert.equal(parseParam('기상', 'large').glass, false);
+});
+
+test('기상 위젯: 큰 것은 본판과 같은 9줄 × 12시간, 작은 것은 4줄 × 3시간 간격', () => {
+  const m = model({ cloud: 30 });
+  const big = layout('기상', m), small = layout('날씨', m);
+  const cells = spec => spec.ops.filter(o => o.op === 'text' && o.size === 9.5).map(o => o.text);
+  const hours = spec => spec.ops.filter(o => o.op === 'text' && o.size === 9).map(o => o.text);
+  assert.deepEqual(texts(big).filter(x => /^(상층|중층|하층|시상|제트|투명|이슬|기온|바람)$/.test(x)), ['상층', '중층', '하층', '시상', '제트', '투명', '이슬', '기온', '바람']);
+  assert.deepEqual(hours(big), ['18', '19', '20', '21', '22', '23', '00', '01', '02', '03', '04', '05']);
+  assert.equal(cells(big).length, 9 * 12);
+  // 흉내 자료: 하층 30 · 중층 0 · 상층 0 · 에어로졸 0.1 · 기온 10 · 바람 2
+  const row = (spec, i, n) => cells(spec).slice(i * n, i * n + n);
+  assert.deepEqual([0, 1, 2, 5, 7, 8].map(i => row(big, i, 12)[0]), ['0', '0', '30', '.10', '10', '2']);
+  assert.ok(row(big, 2, 12).every(x => x === '30') && row(big, 0, 12).every(x => x === '0'));
+  assert.deepEqual(hours(small), ['18', '21', '00', '03']);
+  assert.equal(cells(small).length, 4 * 4);
+  assert.ok(row(small, 0, 4).every(x => x === '30'));
+  // 칸이 판 안에 있고 줄끼리 겹치지 않는다
+  for (const [spec, n] of [[big, 12], [small, 4]]) {
+    const rects = spec.ops.filter(o => o.op === 'rect' && o.r === 3 && o.alpha == null);
+    assert.ok(rects.every(o => o.x >= 0 && o.x + o.w <= spec.w && o.y >= 26 && o.y + o.h <= spec.h - 12), '칸이 판 밖');
+    const ys = [...new Set(rects.map(o => +o.y.toFixed(3)))].sort((a, b) => a - b);
+    assert.equal(ys.length, spec === big ? 9 : 4);
+    for (let i = 1; i < ys.length; i++) assert.ok(ys[i] - ys[i - 1] >= rects[0].h + 0.999, '줄이 겹친다');
+    assert.equal(rects.filter(o => o.y === rects[0].y).length, n);
+  }
+});
+
+test('유리풍: 글귀는 같고 바탕·칸 색만 다르며, 그린 뒤 평면 색으로 돌아온다', () => {
+  const m = model({ cloud: 95, dew: 9.5 });
+  for (const kind of Object.keys(KINDS)) {
+    const flat = layout(kind, m), glass = layout(kind, m, { glass: true });
+    assert.deepEqual(texts(glass), texts(flat), kind);
+    assert.deepEqual([flat.ops[0].op, flat.ops[0].fill], ['rect', T.card], kind);
+    assert.equal(glass.ops[0].op, 'poly', kind);
+    const rim = glass.ops.at(-1);
+    assert.deepEqual([rim.op, rim.fill, rim.w, rim.h], ['rect', undefined, glass.w - 1, glass.h - 1], kind);
+    for (const o of [...flat.ops, ...glass.ops]) for (const c of [o.fill, o.stroke, o.color]) if (c != null) assert.match(c, /^#[0-9a-f]{6}([0-9a-f]{2})?$/, `${kind}: ${c}`);
+    assert.ok(!flat.ops.some(o => [o.fill, o.stroke, o.color].some(c => c && c.length === 9)), `${kind}: 평면에 반투명 색`);
+  }
+  assert.equal(T.glass, false);
+  // 빛은 왼쪽 위가 가장 밝고 오른쪽 아래로 갈수록 어둡다
+  const strips = layout('기상', m, { glass: true }).ops.filter(o => o.op === 'poly' && o.close && o.pts.length === 4).map(o => parseInt(o.fill.slice(1, 3), 16));
+  assert.equal(strips.length, 36);
+  assert.ok(strips.every((v, i) => i === 0 || v <= strips[i - 1]) && strips[0] > strips.at(-1) + 20, strips.join(','));
+});
+
+test('색: 위젯의 평면 색은 본판 style.css와 같다', () => {
+  const css = readFileSync(new URL('../style.css', import.meta.url), 'utf8').match(/:root \{([^}]*)\}/)[1];
+  const v = name => css.match(new RegExp(`--${name}: (#[0-9a-f]+)`))[1];
+  const pairs = { bg: T.bg, card: T.card, band: T.band, line: T.line, edge: T.edge, ink: T.ink, ink2: T.ink2, ink3: T.ink3, good: T.g, mid: T.m, bad: T.b,
+    'g-g': T.cell.g, 'g-m': T.cell.m, 'g-b': T.cell.b, 'g-p': T.cell.p, na: T.na, cloud: T.cloud, cbase: T.cbase, tw0: T.tw[0], tw4: T.tw[4], 'b-Mars': T.body.Mars, 'b-Moon': T.body.Moon };
+  for (const [name, val] of Object.entries(pairs)) assert.equal(v(name), val, name);
+});
+
+test('기상 위젯: 여러 시간을 묶은 칸은 구름은 평균, 시상·제트는 가장 큰 값, 이슬점 차는 가장 작은 값', () => {
+  assert.equal(blockValue([0, 100, 100], 'mean'), 200 / 3);
+  assert.equal(blockValue([1.2, 2.5, 1.8], 'max'), 2.5);
+  assert.equal(blockValue([4, 0.8, 3], 'min'), 0.8);
+  assert.equal(blockValue([NaN, 30, null], 'mean'), 30);
+  assert.ok(Number.isNaN(blockValue([NaN, undefined], 'max')));
+  assert.equal(blockValue([7], undefined), 7);
+  // 작은 위젯: 21시 맑음 · 22~23시 흐림이면 21시 칸은 맑음이 아니라 평균 67
+  const m = model({ cloud: 0 }), v = m.nights[0];
+  const at = h => v.hours.find(x => new Date(x.t + KST).getUTCHours() === h);
+  at(22).cloud = 100; at(23).cloud = 100; at(22).spread = 0.5;
+  const ops = layout('날씨', m).ops, cells = ops.filter(o => o.op === 'text' && o.size === 9.5).map(o => o.text);
+  assert.deepEqual(cells.slice(0, 4), ['0', '67', '0', '0']);
+  assert.equal(cells[12 + 1], '0.5');
+});
+
+test('색: 구름 칸 글자색이 바뀌는 경계에서 고른 글자가 다른 글자보다 잘 보인다', async () => {
+  const { CLOUD_INK_FLIP } = await import('../js/charts.js');
+  const rgb = s => [1, 3, 5].map(i => parseInt(s.slice(i, i + 2), 16));
+  const lum = c => c.map(x => x / 255).map(x => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)).reduce((s, x, i) => s + x * [0.2126, 0.7152, 0.0722][i], 0);
+  const ratio = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+  const cell = p => rgb(T.cbase).map((b, i) => b + (rgb(T.cloud)[i] - b) * p / 100);
+  for (const p of [0, 20, CLOUD_INK_FLIP - 1]) assert.ok(ratio(cell(p), rgb(T.ink)) > ratio(cell(p), rgb(T.bg)), `${p}%`);
+  for (const p of [CLOUD_INK_FLIP, 70, 100]) assert.ok(ratio(cell(p), rgb(T.bg)) > ratio(cell(p), rgb(T.ink)), `${p}%`);
+  for (let p = 0; p <= 100; p++) assert.ok(ratio(cell(p), rgb(p >= CLOUD_INK_FLIP ? T.bg : T.ink)) >= 3.5, `${p}%`);
 });

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>톤 다운 · 기상 위젯 시안</title>
+<style>
+body { margin: 0; background: #0b0d12; color: #9aa0ab; font: 500 13px/1.4 "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+.page { width: 980px; padding: 40px 40px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 36px 60px; justify-items: center; box-sizing: border-box; }
+.phone { width: 414px; }
+.screen { position: relative; width: 414px; height: 868px; box-sizing: border-box; border: 12px solid #1c1d22; border-radius: 62px; overflow: hidden; box-shadow: 0 0 0 2px #3a3c44, 0 30px 60px rgba(0,0,0,.6);
+  background:
+    radial-gradient(1.2px 1.2px at 12% 9%, #fff 99%, transparent), radial-gradient(1px 1px at 31% 22%, #cfd8ff 99%, transparent), radial-gradient(1.4px 1.4px at 78% 13%, #fff 99%, transparent),
+    radial-gradient(1px 1px at 64% 31%, #fff 99%, transparent), radial-gradient(1.2px 1.2px at 88% 44%, #dfe6ff 99%, transparent), radial-gradient(1px 1px at 8% 52%, #fff 99%, transparent),
+    radial-gradient(1.3px 1.3px at 45% 61%, #fff 99%, transparent), radial-gradient(1px 1px at 22% 74%, #cfd8ff 99%, transparent), radial-gradient(1.2px 1.2px at 71% 68%, #fff 99%, transparent),
+    radial-gradient(120% 45% at 50% 108%, #3a3466 0%, #1a2146 45%, transparent 75%), linear-gradient(180deg, #03050c 0%, #0a1230 60%, #141a3c 100%); }
+.screen.site { background: #000; }
+.screen iframe { position: absolute; inset: 0; width: 390px; height: 844px; border: 0; }
+.island { position: absolute; z-index: 2; top: 11px; left: 50%; width: 118px; height: 34px; margin-left: -59px; border-radius: 20px; background: #000; }
+.status { position: absolute; top: 17px; left: 34px; right: 30px; display: flex; justify-content: space-between; color: #fff; font-size: 16px; font-weight: 800; }
+.grid { position: absolute; top: 66px; left: 26px; width: 338px; display: flex; flex-wrap: wrap; gap: 22px; }
+.w { position: relative; border-radius: 22px; overflow: hidden; }
+.w svg { display: block; position: relative; } .w svg text { font-family: inherit; }
+.pcap { margin-top: 14px; text-align: center; color: #c9ced8; font-size: 15px; font-weight: 700; }
+</style>
+<script src="../vendor/astronomy.browser.min.js"></script>
+</head>
+<body>
+<div class="page" id="page"></div>
+<script type="module">
+import { makeSky } from '../js/sky.js';
+import { loadForecast } from '../js/api.js';
+import { DEFAULT_PLACE } from '../js/places.js';
+import { widgetModel } from '../widget/data.js';
+import { layout } from '../widget/layout.js';
+import { toSvg } from '../widget/svg.js';
+
+const page = document.getElementById('page');
+const h = (cls, html = '') => { const d = document.createElement('div'); d.className = cls; d.innerHTML = html; return d; };
+function phone(cap, fill, site) {
+  const p = h('phone'), s = h('screen' + (site ? ' site' : ''));
+  fill(s);
+  s.appendChild(h('island'));
+  if (!site) s.appendChild(h('status', '<span>21:10</span><span></span>'));
+  p.appendChild(s); p.appendChild(h('pcap', cap)); page.appendChild(p);
+}
+
+// 본판: 실제 화면
+const css = '.wrap{padding-top:54px}';
+const pending = [];
+function site(cap, scrollTo) {
+  phone(cap, s => {
+    const f = document.createElement('iframe'); f.src = '../index.html';
+    pending.push(new Promise(done => f.addEventListener('load', async () => {
+      const d = f.contentDocument;
+      d.head.insertAdjacentHTML('beforeend', `<style>${css}</style>`);
+      for (let i = 0; i < 100 && d.getElementById('weather-card').hidden; i++) await new Promise(r => setTimeout(r, 100));
+      if (scrollTo) f.contentWindow.scrollTo(0, d.getElementById(scrollTo).offsetTop - 54);
+      done();
+    })));
+    s.appendChild(f);
+  }, true);
+}
+site('본판 — 판정 · 밤하늘');
+site('본판 — 관측 기상', 'weather-card');
+
+// 위젯: 같은 그리기 명령을 두 가지 색으로
+const data = await loadForecast(DEFAULT_PLACE.lat, DEFAULT_PLACE.lon).catch(() => null);
+const m = widgetModel(makeSky(window.Astronomy), DEFAULT_PLACE, data, Date.now());
+let n = 0;
+function widgets(cap, glass) {
+  phone(cap, s => {
+    const g = h('grid');
+    for (const k of ['기상', '날씨', '점수', '시간별']) g.appendChild(h('w', toSvg(layout(k, m, { glass }), { id: 'w' + n++ })));
+    s.appendChild(g);
+  });
+}
+widgets('위젯 평면 — 기상(큰) · 날씨(작은) · 점수 · 시간별', false);
+widgets('위젯 유리풍 — 설정값에 「유리」', true);
+await Promise.all(pending);
+document.body.dataset.ready = '1';
+</script>
+</body>
+</html>
