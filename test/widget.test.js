@@ -211,7 +211,7 @@ test('묶음: 모듈마다 내보낸 이름이 원본 ES 모듈과 같고, 저�
     const real = Object.keys(await import(new URL('../' + id, import.meta.url)));
     assert.deepEqual([...names].sort(), real.sort(), id);
   }
-  assert.equal(readFileSync(new URL('../' + OUT, import.meta.url), 'utf8'), code, 'node widget/build.mjs 를 다시 돌릴 것');
+  assert.equal(readFileSync(new URL('../' + OUT, import.meta.url), 'utf8').replace(/\r\n/g, '\n'), code, 'node widget/build.mjs 를 다시 돌릴 것');
 });
 
 test('묶음: 가짜 Scriptable에서 모든 크기·종류가 오류 없이 위젯을 내놓는다', async () => {
