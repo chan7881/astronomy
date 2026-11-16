@@ -375,13 +375,33 @@ function dewanSeeing(levels, elev = 0) {
  * 기압면을 바꾸면 다시 맞춰야 한다(27개 면에서는 0.74~0.77) — api.js LEVELS가 아래와 다르면 테스트가 실패한다.
  * 다시 맞추는 법: docs/시상보정.md · tools/seeing/
  */
-const FREE_SCALE = 0.85;
+const FREE_SCALE = 0.84;
 const FREE_SCALE_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100];
+
+/**
+ * 리처드슨 지표 R(km) — 대류권(p ≥ 200hPa) 층마다 두께(km) × min(1/Ri, 4)를 더한다.
+ *   Ri = (g/θ)(∂θ/∂z) / (∂u/∂z)²,  불안정하거나 중립인 층(N² ≤ 0)은 상한 4로 센다.
+ * meteoblue가 쓰는 청천난류 기준(Ri ≤ 0.25)을 연속값으로 바꾼 것. 성긴 기압면에서 뭉개진 시어를 보충한다.
+ */
+function richardsonIndex(levels, elev = 0) {
+  let r = 0;
+  for (const l of layers(levels, elev)) {
+    if (l.pMid < TROPO_TOP_HPA) continue;
+    const N2 = 9.81 / l.thMid * l.grad / 100, S2 = l.shear * l.shear;
+    r += l.dz / 1000 * (N2 > 0 ? Math.min(S2 / N2, 4) : 4);
+  }
+  return r;
+}
+/**
+ * 자유대기 = FREE_SCALE × Dewan × e^(RI_COEF·(min(R, RI_MAX) − RI_REF)) — 파라날 2023년에 맞추고 2024년으로 검증(docs/시상보정.md 4절).
+ * RI_MAX: 맞춘 자료의 99% 이상이 이 아래(파라날 99% 6.7). 그 위로는 배율을 늘리지 않는다(최대 ×1.23).
+ */
+const RI_COEF = 0.034, RI_REF = 2, RI_MAX = 8;
 
 /** 자유대기 시상(″) — 보정한 값 */
 function freeSeeing(levels, elev = 0) {
   const s = dewanSeeing(levels, elev);
-  return s == null ? null : s * FREE_SCALE;
+  return s == null ? null : s * FREE_SCALE * Math.exp(RI_COEF * (Math.min(richardsonIndex(levels, elev), RI_MAX) - RI_REF));
 }
 
 /**
@@ -513,7 +533,7 @@ function angularDiameter(radiusKm, distAu) {
 const DIRS = ['북', '북북동', '북동', '동북동', '동', '동남동', '남동', '남남동', '남', '남남서', '남서', '서남서', '서', '서북서', '북서', '북북서'];
 const compass = az => DIRS[Math.round((((az % 360) + 360) % 360) / 22.5) % 16];
 
-return { theta, layers, badLayer, jetSpeed, dewanSeeing, freeSeeing, groundSeeing, seeing, seeingIndex, hourScore, bestWindow, nightSummary, cloudNote, moonPhaseName, angularDiameter, BAD_GRADIENT, TROPO_TOP_HPA, clamp, FREE_SCALE, FREE_SCALE_LEVELS, gradeSeeing, gradeJet, gradeCloud, gradeDew, gradeAod, gradeScore, GRADE_KO, spread, mean, compass };
+return { theta, layers, badLayer, jetSpeed, dewanSeeing, richardsonIndex, freeSeeing, groundSeeing, seeing, seeingIndex, hourScore, bestWindow, nightSummary, cloudNote, moonPhaseName, angularDiameter, BAD_GRADIENT, TROPO_TOP_HPA, clamp, FREE_SCALE, FREE_SCALE_LEVELS, RI_COEF, RI_REF, RI_MAX, gradeSeeing, gradeJet, gradeCloud, gradeDew, gradeAod, gradeScore, GRADE_KO, spread, mean, compass };
 })();
 // ── js/sky.js
 __m["js/sky.js"] = (() => {
@@ -1355,8 +1375,18 @@ const LAYOUTS = {
     return c;
   },
   고도(m) {
-    const v = m.nights[0], c = frame('고도', '밤하늘', dateText(m, v));
-    altChart(c, m, v, 8, 34, 322, 118);
+    // 곡선 아래 한 줄: 일몰 · 일출 · (달 모양) 밝은 면 % 위상 이름
+    const v = m.nights[0], { hm } = clock(m.offMs), c = frame('고도', '밤하늘', dateText(m, v));
+    altChart(c, m, v, 8, 32, 322, 98);
+    const y = 135, R = 338 - PAD, t = x => (x != null ? hm(x) : '–');
+    c.line(8, 131, 330, 131, T.line);
+    c.text('일몰', PAD, y, { size: 10.5, weight: 'b', color: T.ink3 });
+    c.text(t(v.night.sunset), PAD + 26, y, { size: 12, weight: 'h' });
+    c.text('일출', 92, y, { size: 10.5, weight: 'b', color: T.ink3 });
+    c.text(t(v.night.sunrise), 118, y, { size: 12, weight: 'h' });
+    const label = `${Math.round(v.moon.frac * 100)}% ${v.moon.name}`;
+    c.text(label, R, y, { size: 12, weight: 'b', align: 'r' });
+    moonDisc(c, v.moon.deg, R - textWidth(label, 12) - 16, y + 7.5, 7, m.place.lat < 0);
     return c;
   },
   '5일'(m) {

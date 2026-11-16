@@ -310,8 +310,18 @@ const LAYOUTS = {
     return c;
   },
   고도(m) {
-    const v = m.nights[0], c = frame('고도', '밤하늘', dateText(m, v));
-    altChart(c, m, v, 8, 34, 322, 118);
+    // 곡선 아래 한 줄: 일몰 · 일출 · (달 모양) 밝은 면 % 위상 이름
+    const v = m.nights[0], { hm } = clock(m.offMs), c = frame('고도', '밤하늘', dateText(m, v));
+    altChart(c, m, v, 8, 32, 322, 98);
+    const y = 135, R = 338 - PAD, t = x => (x != null ? hm(x) : '–');
+    c.line(8, 131, 330, 131, T.line);
+    c.text('일몰', PAD, y, { size: 10.5, weight: 'b', color: T.ink3 });
+    c.text(t(v.night.sunset), PAD + 26, y, { size: 12, weight: 'h' });
+    c.text('일출', 92, y, { size: 10.5, weight: 'b', color: T.ink3 });
+    c.text(t(v.night.sunrise), 118, y, { size: 12, weight: 'h' });
+    const label = `${Math.round(v.moon.frac * 100)}% ${v.moon.name}`;
+    c.text(label, R, y, { size: 12, weight: 'b', align: 'r' });
+    moonDisc(c, v.moon.deg, R - textWidth(label, 12) - 16, y + 7.5, 7, m.place.lat < 0);
     return c;
   },
   '5일'(m) {

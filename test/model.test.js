@@ -63,7 +63,10 @@ test('시상: 시어가 커지면 나빠진다', () => {
 test('시상: 안정도(온위 기울기)가 커지면 나빠지고, 건조단열이면 0에 가깝다', () => {
   const std = M.freeSeeing(column({ lapse: 6.5 })), stable = M.freeSeeing(column({ lapse: 3 }));
   assert.ok(stable > std * 1.5, `${stable} vs ${std}`);
-  assert.ok(M.freeSeeing(column({ lapse: 9.8 })) < std * 0.25);   // 시험용 고도가 정역학과 딱 맞지는 않아 0은 아니다
+  // Dewan 식은 온위 기울기에서 나오므로 건조단열이면 0에 가깝다(시험용 고도가 정역학과 딱 맞지는 않아 0은 아니다).
+  // 보정한 값은 리처드슨 배율이 중립층을 난류로 보아 최대 ×1.23까지 키우지만, 그래도 표준 대기보다 훨씬 작다.
+  assert.ok(M.dewanSeeing(column({ lapse: 9.8 })) < M.dewanSeeing(column({ lapse: 6.5 })) * 0.25);
+  assert.ok(M.freeSeeing(column({ lapse: 9.8 })) < std * 0.4);
 });
 
 test('시상: 표준 대기의 값이 현실 범위(0.1~3″)에 든다', () => {
@@ -128,17 +131,34 @@ test('달 위상 이름', () => {
     ['삭', '초승달', '상현달', '차오르는 달', '보름달', '기우는 달', '하현달', '그믐달', '삭']);
 });
 
-test('시상 보정: 자유대기는 Dewan 값에 파라날 배율 0.85를 곱해 줄이고, 지표층 식은 그대로', () => {
+test('시상 보정: 자유대기는 Dewan 값 × 0.84 × 리처드슨 배율, 지표층 식은 그대로', () => {
   const lv = column({ wind: z => 5 + z / 400 });
   const raw = M.dewanSeeing(lv);
-  assert.equal(M.FREE_SCALE, 0.85);
+  assert.deepEqual([M.FREE_SCALE, M.RI_COEF, M.RI_REF], [0.84, 0.034, 2]);
   near(raw, 0.69824, 1e-5);                    // Dewan 식 자체가 바뀌면 여기서 걸린다
-  near(M.freeSeeing(lv), 0.59351, 1e-5);
-  near(M.seeing(lv, 0), Math.pow(0.59351 ** (5 / 3) + 0.5 ** (5 / 3), 3 / 5), 1e-5);   // 배율은 한 번만
+  near(M.richardsonIndex(lv), 0.56704, 1e-5);
+  near(M.freeSeeing(lv), 0.55863, 1e-5);       // 0.69824 × 0.84 × e^(0.034 × (0.567 − 2))
+  near(M.seeing(lv, 0), Math.pow(0.55863 ** (5 / 3) + 0.5 ** (5 / 3), 3 / 5), 1e-5);   // 배율은 한 번만
   assert.deepEqual(A.LEVELS, M.FREE_SCALE_LEVELS);   // 사이트가 받는 기압면 = 배율을 맞춘 기압면
   assert.ok(M.freeSeeing(lv) < raw);
   assert.equal(M.freeSeeing([]), null);
   near(M.groundSeeing(10), 1.1, 1e-12);
+});
+
+test('리처드슨 지표: 시어가 세거나 안정도가 약할수록 커지고, 층마다 4/km를 넘지 않는다', () => {
+  assert.equal(M.richardsonIndex(column()), 0);                         // 시어 없음 + 안정 → 0
+  const weak = M.richardsonIndex(column({ wind: z => 5 + z / 800 })), strong = M.richardsonIndex(column({ wind: z => 5 + z / 400 }));
+  assert.ok(strong > weak * 3.5 && weak > 0, `${weak} → ${strong}`);  // 시어 2배 → 1/Ri 4배
+  const stable = M.richardsonIndex(column({ lapse: 3, wind: z => 5 + z / 400 }));
+  assert.ok(stable < strong);                                           // 더 안정하면 작다
+  near(M.richardsonIndex(column({ lapse: 12 })), (Z[9] - Z[0]) / 1000 * 4, 1e-9);   // 불안정한 층은 상한 4/km
+  const strat = [...column({ wind: () => 10 }), { p: 150, z: 13600, T: -60, ws: 60, wd: 270 }];   // 200→150hPa: 안정 + 센 시어
+  assert.equal(M.richardsonIndex(strat), 0);                            // 200hPa 위는 세지 않는다
+  const jump = column({ wind: z => (z < 500 ? 0 : 60) });               // 안정한 맨 아래 층에 1/Ri ≈ 70의 시어
+  near(M.richardsonIndex(jump), (Z[1] - Z[0]) / 1000 * 4, 1e-9);        // 층마다 상한 4/km
+  assert.ok(M.freeSeeing(column({ wind: z => 5 + z / 400 })) > M.freeSeeing(column({ wind: z => 5 + z / 800 })));
+  const hot = column({ lapse: 12 });                                    // R 46.7 → 상한 8에서 멈춘다
+  near(M.freeSeeing(hot) / M.dewanSeeing(hot), 0.84 * Math.exp(0.034 * (8 - 2)), 1e-9);
 });
 
 test('시직경·방위', () => {

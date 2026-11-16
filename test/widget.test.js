@@ -160,6 +160,21 @@ test('배치: 자료가 없어도(예보 실패) 13종이 그려진다', () => {
   assert.equal(lockText(m).inline, '관측 –');
 });
 
+test('고도 위젯: 곡선 아래에 일몰·일출 시각과 「밝은 면% 위상」, 달 모양은 글귀 왼쪽', () => {
+  const m = model(), v = m.nights[0], spec = layout('고도', m), t = texts(spec);
+  const at = s => t.indexOf(s);
+  const sunset = t[at('일몰') + 1], sunrise = t[at('일출') + 1];
+  // 포항 11월 16일: 일몰 17시 10분대, 다음 날 일출 7시 전후(한국천문연구원 역서와 몇 분 안)
+  assert.match(sunset, /^17:1\d$/); assert.match(sunrise, /^0(6:5\d|7:0\d)$/);
+  const label = `${Math.round(v.moon.frac * 100)}% ${v.moon.name}`;
+  assert.ok(t.includes(label), t.join('|'));
+  assert.match(label, /^\d+% 초승달$/);                       // 11월 16일은 차오르는 초승달
+  const lab = spec.ops.find(o => o.op === 'text' && o.text === label);
+  const disc = spec.ops.filter(o => o.op === 'circle' && o.cy > 131).at(-1);
+  assert.ok(disc && disc.cx + disc.r < lab.x - textWidth(label, 12), `${disc?.cx} vs ${lab.x}`);
+  assert.ok(spec.ops.filter(o => o.op === 'text' && /°$|^\d\d$/.test(o.text)).every(o => o.y < 131));   // 곡선 눈금은 줄 위
+});
+
 test('배치: 점수·등급·달 글귀가 자료와 같다', () => {
   const m = model({ cloud: 5 }), s = m.nights[0].summary;
   const t = texts(layout('점수', m));

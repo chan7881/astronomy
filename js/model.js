@@ -101,13 +101,33 @@ export function dewanSeeing(levels, elev = 0) {
  * 기압면을 바꾸면 다시 맞춰야 한다(27개 면에서는 0.74~0.77) — api.js LEVELS가 아래와 다르면 테스트가 실패한다.
  * 다시 맞추는 법: docs/시상보정.md · tools/seeing/
  */
-export const FREE_SCALE = 0.85;
+export const FREE_SCALE = 0.84;
 export const FREE_SCALE_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100];
+
+/**
+ * 리처드슨 지표 R(km) — 대류권(p ≥ 200hPa) 층마다 두께(km) × min(1/Ri, 4)를 더한다.
+ *   Ri = (g/θ)(∂θ/∂z) / (∂u/∂z)²,  불안정하거나 중립인 층(N² ≤ 0)은 상한 4로 센다.
+ * meteoblue가 쓰는 청천난류 기준(Ri ≤ 0.25)을 연속값으로 바꾼 것. 성긴 기압면에서 뭉개진 시어를 보충한다.
+ */
+export function richardsonIndex(levels, elev = 0) {
+  let r = 0;
+  for (const l of layers(levels, elev)) {
+    if (l.pMid < TROPO_TOP_HPA) continue;
+    const N2 = 9.81 / l.thMid * l.grad / 100, S2 = l.shear * l.shear;
+    r += l.dz / 1000 * (N2 > 0 ? Math.min(S2 / N2, 4) : 4);
+  }
+  return r;
+}
+/**
+ * 자유대기 = FREE_SCALE × Dewan × e^(RI_COEF·(min(R, RI_MAX) − RI_REF)) — 파라날 2023년에 맞추고 2024년으로 검증(docs/시상보정.md 4절).
+ * RI_MAX: 맞춘 자료의 99% 이상이 이 아래(파라날 99% 6.7). 그 위로는 배율을 늘리지 않는다(최대 ×1.23).
+ */
+export const RI_COEF = 0.034, RI_REF = 2, RI_MAX = 8;
 
 /** 자유대기 시상(″) — 보정한 값 */
 export function freeSeeing(levels, elev = 0) {
   const s = dewanSeeing(levels, elev);
-  return s == null ? null : s * FREE_SCALE;
+  return s == null ? null : s * FREE_SCALE * Math.exp(RI_COEF * (Math.min(richardsonIndex(levels, elev), RI_MAX) - RI_REF));
 }
 
 /**
