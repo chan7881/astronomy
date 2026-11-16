@@ -1079,7 +1079,7 @@ const KINDS = {
 };
 const DEFAULT_KIND = { small: '점수', medium: '판정', large: '종합' };
 
-const PAD = 14, HEAD = 26;
+const PAD = 14;
 const fin = Number.isFinite;
 
 // ── 그리기 명령 모으개 ─────────────────────────────────
@@ -1100,15 +1100,6 @@ function textWidth(s, size) {
   let em = 0;
   for (const ch of String(s)) em += /[ᄀ-ᇿ　-鿿가-힣]/.test(ch) ? 1 : ch === ' ' ? 0.3 : /[.,:·°″′]/.test(ch) ? 0.32 : 0.6;
   return em * size;
-}
-
-/** 너비 max에 들어가게 앞에서부터 자르고 …을 붙인다 */
-function fit(s, size, max) {
-  s = String(s);
-  if (textWidth(s, size) <= max) return s;
-  let out = '';
-  for (const ch of s) { if (textWidth(out + ch + '…', size) > max) break; out += ch; }
-  return out + '…';
 }
 
 /** 등급 모양: 좋음 ●, 보통 ▲, 나쁨 ■ (색 + 모양 + 글자의 「모양」) */
@@ -1140,14 +1131,11 @@ function sheen(c, w, h) {
   }
 }
 
-function frame(kind, title, right) {
+// 바탕만. 제목 줄(머리띠)은 두지 않는다(2026-11-16) — 내용이 판 전체를 쓴다
+function frame(kind) {
   const [w, h] = SIZES[KINDS[kind]];
   const c = canvas(w, h);
   if (T.glass) sheen(c, w, h); else c.rect(0, 0, w, h, { fill: T.card });
-  c.rect(0, 0, w, HEAD, { fill: T.band });
-  c.line(0, HEAD, w, HEAD, T.edge);
-  c.text(title, PAD, 6, { size: 11, weight: 'h' });
-  if (right) c.text(fit(right, 11, w - 2 * PAD - textWidth(title, 11) - 8), w - PAD, 6, { size: 11, color: T.ink3, align: 'r' });
   return c;
 }
 
@@ -1300,7 +1288,6 @@ function bandChart(c, m, v, bx, by, bw, bh, list = BAND_ROWS, { step = 1, GX = 3
 }
 
 // ── 글귀 ───────────────────────────────────────────────
-const dateText = (m, v) => `${m.place.name} · ${v.month}.${v.day} ${v.wd}`;
 function winShort(m, v) {
   const { hh, hm } = clock(m.offMs), w = v.summary && v.summary.window;
   if (!w) return '없음';
@@ -1317,69 +1304,75 @@ const cautionRow = (c, s) => (x, y) => {
   tag(c, 'b', x, y, 12, s.cautions.join(' · '));
 };
 
+/** 고도 위젯: 곡선과 아래 글귀를 나누는 선의 y */
+const ALT_RULE = 132;
+
 // ── 위젯 13종 ──────────────────────────────────────────
 const LAYOUTS = {
   점수(m) {
-    const v = m.nights[0], s = v.summary, c = frame('점수', '오늘 밤', m.place.name);
-    scoreBox(c, s, PAD, 36, 62, 54, 28, false);
-    if (s) tag(c, s.grade, 86, 43, 15);
-    c.text('관측 점수', 86, 65, { size: 11, color: T.ink2 });
-    rows(c, [['최적', winShort(m, v)], ['구름', pct(s && s.cloudAvg)]], PAD, 100, 130);
+    const v = m.nights[0], s = v.summary, c = frame('점수');
+    scoreBox(c, s, PAD, 14, 68, 64, 32, false);
+    if (s) tag(c, s.grade, 92, 24, 15);
+    c.text('관측 점수', 92, 48, { size: 11, color: T.ink2 });
+    rows(c, [['최적', winShort(m, v)], ['구름', pct(s && s.cloudAvg)]], PAD, 88, 130, { rh: 26 });
     return c;
   },
   달(m) {
-    const v = m.nights[0], { hm } = clock(m.offMs), c = frame('달', '달', `월령 ${v.moon.age.toFixed(1)}`);
-    moonDisc(c, v.moon.deg, 41, 63, 25, m.place.lat < 0);
-    c.text(v.moon.name, 78, 45, { size: 15, weight: 'b' });
-    c.text(`밝은 면 ${Math.round(v.moon.frac * 100)}%`, 78, 66, { size: 11, color: T.ink2 });
-    rows(c, [['뜸', hm(v.moonEv.rise)], ['짐', hm(v.moonEv.set)]], PAD, 100, 130);
+    const v = m.nights[0], { hm } = clock(m.offMs), c = frame('달');
+    moonDisc(c, v.moon.deg, 44, 46, 30, m.place.lat < 0);
+    c.text(v.moon.name, 86, 17, { size: 16, weight: 'b' });
+    c.text(`밝은 면 ${Math.round(v.moon.frac * 100)}%`, 86, 42, { size: 11, color: T.ink2 });
+    c.text(`월령 ${v.moon.age.toFixed(1)}`, 86, 58, { size: 11, color: T.ink2 });
+    rows(c, [['뜸', hm(v.moonEv.rise)], ['짐', hm(v.moonEv.set)]], PAD, 88, 130, { rh: 26 });
     return c;
   },
   대기(m) {
-    const v = m.nights[0], s = v.summary, c = frame('대기', '대기', m.place.name);
+    const v = m.nights[0], s = v.summary, c = frame('대기');
     const see = s && fin(s.seeingAvg) ? s.seeingAvg.toFixed(1) : '–';
-    c.text(see, PAD, 33, { size: 30, weight: 'h' });
-    c.text('″', PAD + textWidth(see, 30) + 1, 36, { size: 15, weight: 'b' });
-    if (s) tag(c, gradeSeeing(s.seeingAvg), PAD + textWidth(see, 30) + 14, 47, 13);
-    c.text('시상 평균', PAD, 71, { size: 11, color: T.ink2 });
+    c.text(see, PAD, 12, { size: 34, weight: 'h' });
+    c.text('″', PAD + textWidth(see, 34) + 1, 15, { size: 16, weight: 'b' });
+    if (s) tag(c, gradeSeeing(s.seeingAvg), PAD + textWidth(see, 34) + 16, 29, 13);
+    c.text('시상 평균', PAD, 58, { size: 11, color: T.ink2 });
     const val = (txt, g, extra) => (x, y) => { c.text(txt, x, y); if (g) tag(c, g, x + textWidth(txt, 12) + 5, y, 12, extra || GRADE_KO[g]); };
     rows(c, [
       ['제트', s && fin(s.jetMax) ? val(`${Math.round(s.jetMax)}m/s`, gradeJet(s.jetMax)) : '–'],
       ['이슬', s && fin(s.dewMin) ? val(`${s.dewMin.toFixed(1)}°`, gradeDew(s.dewMin), gradeDew(s.dewMin) === 'b' ? '결로' : null) : '–'],
-    ], PAD, 92, 130);
+    ], PAD, 88, 130, { rh: 26 });
     return c;
   },
   지금(m) {
-    const { hm } = clock(m.offMs), b = m.nowBody, c = frame('지금', m.isNow ? '지금' : '해진 뒤', hm(m.evalT));
+    // 언제 기준인지(지금 · 해진 뒤)는 오른쪽 위에 작게
+    const { hm } = clock(m.offMs), b = m.nowBody, c = frame('지금');
+    c.text(m.isNow ? hm(m.evalT) : `해진 뒤 ${hm(m.evalT)}`, 158 - PAD, 14, { size: 10.5, weight: 'b', color: T.ink3, align: 'r' });
     if (b) {
-      c.text(b.ko, PAD, 33, { size: 30, weight: 'h', color: T.body[b.id] });
-      c.text(`${b.mag.toFixed(1)}등급 · ${b.constellation}`, PAD, 71, { size: 11, color: T.ink2 });
-      rows(c, [['고도', `${Math.round(b.alt)}° ${b.dir}`], ['짐', hm(b.set)]], PAD, 92, 130);
+      c.text(b.ko, PAD, 12, { size: 34, weight: 'h', color: T.body[b.id] });
+      c.text(`${b.mag.toFixed(1)}등급 · ${b.constellation}`, PAD, 58, { size: 11, color: T.ink2 });
+      rows(c, [['고도', `${Math.round(b.alt)}° ${b.dir}`], ['짐', hm(b.set)]], PAD, 88, 130, { rh: 26 });
     } else {
-      c.text('없음', PAD, 33, { size: 30, weight: 'h', color: T.ink3 });
-      c.text('떠 있는 행성', PAD, 71, { size: 11, color: T.ink2 });
+      c.text('없음', PAD, 12, { size: 34, weight: 'h', color: T.ink3 });
+      c.text('떠 있는 행성', PAD, 58, { size: 11, color: T.ink2 });
       const n = m.nextRise;
-      rows(c, [['다음', n ? n.ko : '–'], ['뜸', n ? hm(n.rise) : '–']], PAD, 92, 130);
+      rows(c, [['다음', n ? n.ko : '–'], ['뜸', n ? hm(n.rise) : '–']], PAD, 88, 130, { rh: 26 });
     }
     return c;
   },
   판정(m) {
-    const v = m.nights[0], s = v.summary, { hh } = clock(m.offMs), c = frame('판정', '오늘 밤 판정', dateText(m, v));
-    scoreBox(c, s, PAD, 40, 86, 96, 36, true);
+    const v = m.nights[0], s = v.summary, { hh } = clock(m.offMs), c = frame('판정');
+    scoreBox(c, s, PAD, 14, 88, 130, 44, true);
     rows(c, [
       ['최적', winLong(m, v)],
       ['달', `${v.moon.name} · ${v.moonEvent}`],
       ['구름', s ? `평균 ${pct(s.cloudAvg)}${s.cloudNote.kind === 'avg' ? '' : ' · ' + cloudLine(s.cloudNote, hh)}` : '–'],
       ['주의', cautionRow(c, s)],
-    ], 114, 40, 210, { rh: 24 });
+    ], 114, 14, 210, { rh: 32.5 });
     return c;
   },
   고도(m) {
     // 곡선 아래 한 줄: 일몰 · 일출 · (달 모양) 밝은 면 % 위상 이름
-    const v = m.nights[0], { hm } = clock(m.offMs), c = frame('고도', '밤하늘', dateText(m, v));
-    altChart(c, m, v, 8, 32, 322, 98);
-    const y = 135, R = 338 - PAD, t = x => (x != null ? hm(x) : '–');
-    c.line(8, 131, 330, 131, T.line);
+    const v = m.nights[0], { hm } = clock(m.offMs), c = frame('고도');
+    altChart(c, m, v, 8, 10, 322, 118);
+    const y = ALT_RULE + 4, R = 338 - PAD, t = x => (x != null ? hm(x) : '–');
+    c.line(8, ALT_RULE, 330, ALT_RULE, T.line);
     c.text('일몰', PAD, y, { size: 10.5, weight: 'b', color: T.ink3 });
     c.text(t(v.night.sunset), PAD + 26, y, { size: 12, weight: 'h' });
     c.text('일출', 92, y, { size: 10.5, weight: 'b', color: T.ink3 });
@@ -1390,7 +1383,7 @@ const LAYOUTS = {
     return c;
   },
   '5일'(m) {
-    const c = frame('5일', '5일 밤', m.place.name), cw = (338 - 20) / 5, top = 44, base = 106;
+    const c = frame('5일'), cw = (338 - 20) / 5, top = 32, base = 110;
     m.nights.forEach((v, i) => {
       const s = v.summary, cx = 10 + i * cw + cw / 2;
       c.rect(cx - 15, top, 30, base - top, { fill: T.band, r: 4 });
@@ -1399,42 +1392,42 @@ const LAYOUTS = {
         c.rect(cx - 15, base - bh, 30, bh, { fill: T[s.grade], r: 4 });
         c.text(Math.round(s.score), cx, Math.max(base - bh - 17, top - 15), { size: 13, weight: 'h', align: 'c' });
         const label = GRADE_KO[s.grade], tw = 10 * 1.05 + textWidth(label, 10);
-        tag(c, s.grade, cx - tw / 2, 110, 10);
+        tag(c, s.grade, cx - tw / 2, 115, 10);
       } else c.text('–', cx, top - 15, { size: 13, weight: 'h', align: 'c', color: T.ink3 });
-      c.text(`${v.day} ${v.wd}`, cx, 126, { size: 10.5, weight: i ? 'm' : 'h', color: i ? T.ink3 : T.ink, align: 'c' });
+      c.text(`${v.day} ${v.wd}`, cx, 131, { size: 10.5, weight: i ? 'm' : 'h', color: i ? T.ink3 : T.ink, align: 'c' });
     });
     return c;
   },
   시간별(m) {
-    const v = m.nights[0], c = frame('시간별', '시간별', dateText(m, v));
-    bandChart(c, m, v, 8, 34, 322, 118);
+    const v = m.nights[0], c = frame('시간별');
+    bandChart(c, m, v, 8, 12, 322, 140);
     return c;
   },
   날씨(m) {
-    const v = m.nights[0], c = frame('날씨', '관측 기상', m.place.name);
-    bandChart(c, m, v, 4, 34, 150, 118, BAND_ROWS, { step: 3, GX: 28 });
+    const v = m.nights[0], c = frame('날씨');
+    bandChart(c, m, v, 4, 12, 150, 140, BAND_ROWS, { step: 3, GX: 28 });
     return c;
   },
   기상(m) {
-    const v = m.nights[0], c = frame('기상', '관측 기상', dateText(m, v));
-    bandChart(c, m, v, 8, 36, 322, 312, WEATHER_ROWS);
+    const v = m.nights[0], c = frame('기상');
+    bandChart(c, m, v, 8, 12, 322, 334, WEATHER_ROWS);
     return c;
   },
   종합(m) {
-    const v = m.nights[0], s = v.summary, c = frame('종합', '오늘 밤', dateText(m, v));
-    scoreBox(c, s, PAD, 36, 70, 66, 28, true);
-    rows(c, [['최적', winLong(m, v)], ['달', `${v.moon.name} · ${v.moonEvent}`], ['주의', cautionRow(c, s)]], 98, 36, 226);
-    altChart(c, m, v, 8, 110, 322, 122);
-    bandChart(c, m, v, 8, 238, 322, 110);
+    const v = m.nights[0], s = v.summary, c = frame('종합');
+    scoreBox(c, s, PAD, 14, 76, 75, 30, true);
+    rows(c, [['최적', winLong(m, v)], ['달', `${v.moon.name} · ${v.moonEvent}`], ['주의', cautionRow(c, s)]], 104, 14, 220, { rh: 25 });
+    altChart(c, m, v, 8, 96, 322, 132);
+    bandChart(c, m, v, 8, 234, 322, 114);
     return c;
   },
   천체(m) {
-    const v = m.nights[0], { hm } = clock(m.offMs), c = frame('천체', '천체', dateText(m, v));
+    const v = m.nights[0], { hm } = clock(m.offMs), c = frame('천체');
     const cols = [[PAD, 'l', '천체'], [122, 'r', '뜸'], [172, 'r', '남중'], [216, 'r', '고도'], [272, 'r', '짐'], [324, 'r', '등급']];
-    cols.forEach(([x, align, name]) => c.text(name, x, 35, { size: 10.5, weight: 'b', color: T.ink3, align }));
-    const rh = (354 - 52 - 6) / 8;
+    cols.forEach(([x, align, name]) => c.text(name, x, 14, { size: 10.5, weight: 'b', color: T.ink3, align }));
+    const rh = (354 - 32 - 8) / 8;
     v.table.forEach((b, i) => {
-      const y = 52 + i * rh, ty = y + (rh - 12 * 1.2) / 2;
+      const y = 32 + i * rh, ty = y + (rh - 12 * 1.2) / 2;
       c.line(PAD, y, 324, y);
       const cells = [b.ko, hm(b.rise), hm(b.transit), `${Math.round(b.transitAlt)}°`, hm(b.set), (b.mag < 0 ? '−' : '') + Math.abs(b.mag).toFixed(1)];
       cells.forEach((t, k) => c.text(t, cols[k][0], ty, k ? { align: 'r' } : { weight: 'h', color: T.body[b.id] }));
@@ -1442,12 +1435,12 @@ const LAYOUTS = {
     return c;
   },
   예보(m) {
-    const c = frame('예보', '5일 예보', m.place.name);
+    const c = frame('예보');
     const cols = [[PAD, 'l', '밤'], [112, 'r', '점수'], [164, 'r', '구름'], [208, 'r', '시상'], [252, 'r', '달'], [324, 'r', '최적']];
-    cols.forEach(([x, align, name]) => c.text(name, x, 35, { size: 10.5, weight: 'b', color: T.ink3, align }));
-    const rh = (354 - 52 - 6) / 5;
+    cols.forEach(([x, align, name]) => c.text(name, x, 14, { size: 10.5, weight: 'b', color: T.ink3, align }));
+    const rh = (354 - 32 - 8) / 5;
     m.nights.forEach((v, i) => {
-      const s = v.summary, y = 52 + i * rh, ty = y + (rh - 12 * 1.2) / 2;
+      const s = v.summary, y = 32 + i * rh, ty = y + (rh - 12 * 1.2) / 2;
       c.line(PAD, y, 324, y);
       c.text(`${v.day} ${v.wd}`, PAD, ty, { weight: 'h' });
       c.text(s ? Math.round(s.score) : '–', 100, y + (rh - 17 * 1.2) / 2, { size: 17, weight: 'h', align: 'r' });
@@ -1507,7 +1500,7 @@ function lockCircle(kind, m) {
   return { w: c.w, h: c.h, ops: c.ops };
 }
 
-return { textWidth, fit, moonShape, dashes, blockValue, layout, lockText, lockCircle, SIZES, KINDS, DEFAULT_KIND };
+return { textWidth, moonShape, dashes, blockValue, layout, lockText, lockCircle, SIZES, KINDS, DEFAULT_KIND, ALT_RULE };
 })();
 // ── js/places.js
 __m["js/places.js"] = (() => {

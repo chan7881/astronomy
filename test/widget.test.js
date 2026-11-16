@@ -6,7 +6,7 @@ import { makeSky } from '../js/sky.js';
 import { normalize, LEVELS } from '../js/api.js';
 import { baseNoon, nightView } from '../js/view.js';
 import { widgetModel, highestBody, bandHours } from '../widget/data.js';
-import { layout, lockText, lockCircle, moonShape, dashes, textWidth, fit, blockValue, KINDS, SIZES } from '../widget/layout.js';
+import { layout, lockText, lockCircle, moonShape, dashes, textWidth, blockValue, KINDS, SIZES, ALT_RULE } from '../widget/layout.js';
 import { parseParam } from '../widget/param.js';
 import { toSvg } from '../widget/svg.js';
 import { T } from '../widget/theme.js';
@@ -155,7 +155,7 @@ test('배치: 13종 모두 크기에 맞고, 좌표가 유한하고, 글자가 �
 test('배치: 자료가 없어도(예보 실패) 13종이 그려진다', () => {
   const m = widgetModel(sky, POHANG, null, NOW);
   assert.equal(m.nights[0].summary, null);
-  for (const kind of Object.keys(KINDS)) assert.ok(layout(kind, m).ops.length > 3, kind);
+  for (const kind of Object.keys(KINDS)) assert.ok(layout(kind, m).ops.length > 1, kind);   // 바탕 + 내용
   assert.ok(texts(layout('시간별', m)).includes('예보 자료 없음'));
   assert.equal(lockText(m).inline, '관측 –');
 });
@@ -170,9 +170,9 @@ test('고도 위젯: 곡선 아래에 일몰·일출 시각과 「밝은 면% �
   assert.ok(t.includes(label), t.join('|'));
   assert.match(label, /^\d+% 초승달$/);                       // 11월 16일은 차오르는 초승달
   const lab = spec.ops.find(o => o.op === 'text' && o.text === label);
-  const disc = spec.ops.filter(o => o.op === 'circle' && o.cy > 131).at(-1);
+  const disc = spec.ops.filter(o => o.op === 'circle' && o.cy > ALT_RULE).at(-1);
   assert.ok(disc && disc.cx + disc.r < lab.x - textWidth(label, 12), `${disc?.cx} vs ${lab.x}`);
-  assert.ok(spec.ops.filter(o => o.op === 'text' && /°$|^\d\d$/.test(o.text)).every(o => o.y < 131));   // 곡선 눈금은 줄 위
+  assert.ok(spec.ops.filter(o => o.op === 'text' && /°$|^\d\d$/.test(o.text)).every(o => o.y + o.size * 1.2 <= ALT_RULE));   // 곡선 눈금은 줄 위
 });
 
 test('배치: 점수·등급·달 글귀가 자료와 같다', () => {
@@ -270,7 +270,7 @@ test('묶음: 가짜 Scriptable에서 모든 크기·종류가 오류 없이 위
     if (family === 'accessoryInline') assert.match(w.texts[0], /^관측 \d+ · /);
     else if (family === 'accessoryRectangular') assert.equal(w.texts.length, 3);
     else if (family === 'accessoryCircular') assert.ok(w.image.n > 0, label);
-    else assert.ok(w.backgroundImage.n >= 3 && w.backgroundImage.texts.length > 3, label);
+    else assert.ok(w.backgroundImage.n >= 2 && w.backgroundImage.texts.length > 3, label);   // 바탕 + 칸·선
     return log;
   };
   for (const [family, param] of cases) await runCase(family, param, code);
@@ -312,13 +312,17 @@ test('달 모양: 남반구에서는 좌우가 바뀐다', () => {
   assert.ok(cx(lit(lockCircle('달', north))) > 33 && cx(lit(lockCircle('달', south))) < 33);
 });
 
-test('배치: 긴 관측지 이름은 머리띠에서 잘린다', () => {
-  assert.equal(fit('포항', 11, 80), '포항');
-  assert.equal(fit('보현산천문대관측소', 11, 60), '보현산천…');
-  const m = widgetModel(sky, { ...POHANG, name: '보현산천문대제2관측소옥상' }, fixture(), NOW);
+test('배치: 제목 줄이 없고 내용이 판 위쪽부터 쓴다(관측지 이름·날짜는 위젯에 안 나온다)', () => {
+  const m = widgetModel(sky, { ...POHANG, name: '보현산천문대' }, fixture(), NOW);
   for (const kind of Object.keys(KINDS)) {
-    const [title, right] = layout(kind, m).ops.filter(o => o.op === 'text'), w = SIZES[KINDS[kind]][0];
-    assert.ok(14 + textWidth(title.text, 11) < w - 14 - textWidth(right.text, 11), `${kind}: ${title.text} / ${right.text}`);
+    const spec = layout(kind, m), [w, h] = SIZES[KINDS[kind]];
+    assert.ok(!spec.ops.some(o => o.op === 'rect' && o.y === 0 && o.h < h), `${kind}: 머리띠`);
+    assert.ok(!texts(spec).some(t => t.includes('보현산') || /11\.16/.test(t)), `${kind}: ${texts(spec).join('|')}`);
+    const ys = spec.ops.filter(o => o.op !== 'poly' && o.op !== 'line' && !(o.op === 'rect' && o.h >= h)).map(o => (o.op === 'circle' ? o.cy - o.r : o.y));
+    // 5일은 막대가 32에서 시작하고 그 위는 점수 글자 자리
+    assert.ok(Math.min(...ys) <= (kind === '5일' ? 32 : 18), `${kind}: 맨 위 ${Math.min(...ys)}`);
+    const bottom = Math.max(...spec.ops.filter(o => o.op === 'text').map(o => o.y + o.size * 1.2));
+    assert.ok(bottom >= h - (h > 200 ? 40 : 26), `${kind}: 맨 아래 ${bottom.toFixed(1)} / ${h}`);
   }
 });
 
@@ -356,7 +360,7 @@ test('기상 위젯: 큰 것은 본판과 같은 9줄 × 12시간, 작은 것은
   // 칸이 판 안에 있고 줄끼리 겹치지 않는다
   for (const [spec, n] of [[big, 12], [small, 4]]) {
     const rects = spec.ops.filter(o => o.op === 'rect' && o.r === 3 && o.alpha == null);
-    assert.ok(rects.every(o => o.x >= 0 && o.x + o.w <= spec.w && o.y >= 26 && o.y + o.h <= spec.h - 12), '칸이 판 밖');
+    assert.ok(rects.every(o => o.x >= 0 && o.x + o.w <= spec.w && o.y >= 8 && o.y + o.h <= spec.h - 12), '칸이 판 밖');
     const ys = [...new Set(rects.map(o => +o.y.toFixed(3)))].sort((a, b) => a - b);
     assert.equal(ys.length, spec === big ? 9 : 4);
     for (let i = 1; i < ys.length; i++) assert.ok(ys[i] - ys[i - 1] >= rects[0].h + 0.999, '줄이 겹친다');
