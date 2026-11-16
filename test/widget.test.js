@@ -426,3 +426,48 @@ test('상세 표: 칸은 기상 띠와 같은 규칙으로 칠한다', async () 
   assert.equal(detailCell('–', { kind: 'grade', grade: null }), '<td>–</td>');
   assert.equal(detailCell('10'), '<td>10</td>');
 });
+
+test('받아오기: 저장본이 방금 것이어도 서버 판이 바뀌었으면 새 판을 쓰고, 그대로면(304) 저장본을 쓴다', async () => {
+  const src = readFileSync(new URL('../widget/loader.js', import.meta.url), 'utf8');
+  const run = async (files, server) => {
+    const sent = [];
+    const ctx = vm.createContext({
+      Date, Object, String,
+      Request: class { constructor(url) { this.url = url; this.headers = {}; }
+        async loadString() { sent.push(this.headers); const r = server(this.headers); if (r.throw) throw new Error('offline'); this.response = r; return r.body ?? ''; } },
+      FileManager: { local: () => ({ libraryDirectory: () => '/l', joinPath: (a, b) => a + '/' + b, remove: p => { delete files[p]; },
+        fileExists: p => p in files, readString: p => files[p], writeString: (p, s) => { files[p] = s; } }) },
+    });
+    await vm.runInContext(`(async () => {\n${src}\n})()`, ctx);
+    return { ran: ctx.ran, files, sent };
+  };
+  const OLD = '// ASTRO_WIDGET\nglobalThis.ran = "old";', NEW = '// ASTRO_WIDGET\nglobalThis.ran = "new";';
+  const server = h => h['If-None-Match'] === '"v2"' ? { statusCode: 304, headers: {} } : { statusCode: 200, headers: { Etag: '"v2"' }, body: NEW };
+  // 예전 받아오기가 남긴 방금 저장본(ETag 없음) — 6시간을 기다리지 않고 새 판으로
+  let r = await run({ '/l/astro-widget.cache.js': OLD }, server);
+  assert.equal(r.ran, 'new');
+  assert.equal(r.files['/l/astro-widget.etag'], '"v2"');
+  // 판이 같으면 304, 저장본 그대로
+  r = await run({ '/l/astro-widget.cache.js': NEW, '/l/astro-widget.etag': '"v2"' }, server);
+  assert.equal(r.ran, 'new');
+  assert.equal(r.sent[0]['If-None-Match'], '"v2"');
+  // 서버 판이 바뀌면(ETag 다름) 새로 받는다
+  r = await run({ '/l/astro-widget.cache.js': OLD, '/l/astro-widget.etag': '"v1"' }, server);
+  assert.equal(r.ran, 'new');
+  // 받지 못하면 저장본
+  r = await run({ '/l/astro-widget.cache.js': OLD, '/l/astro-widget.etag': '"v1"' }, () => ({ throw: true }));
+  assert.equal(r.ran, 'old');
+  // 처음(저장본 없음)에는 표를 보내지 않는다 — 남은 표만 있어도 마찬가지
+  r = await run({ '/l/astro-widget.etag': '"v2"' }, server);
+  assert.equal(r.ran, 'new');
+  assert.equal(r.sent[0]['If-None-Match'], undefined);
+  // 200이어도 위젯 묶음이 아니면(와이파이 로그인 화면 등) 저장본을 덮지 않는다
+  r = await run({ '/l/astro-widget.cache.js': OLD }, () => ({ statusCode: 200, headers: { etag: '"x"' }, body: '<html>login</html>' }));
+  assert.equal(r.ran, 'old');
+  assert.equal(r.files['/l/astro-widget.cache.js'], OLD);
+  assert.equal('/l/astro-widget.etag' in r.files, false);
+  // ETag 없이 새 판이 오면 옛 표를 지운다
+  r = await run({ '/l/astro-widget.cache.js': OLD, '/l/astro-widget.etag': '"v1"' }, () => ({ statusCode: 200, headers: {}, body: NEW }));
+  assert.equal(r.ran, 'new');
+  assert.equal('/l/astro-widget.etag' in r.files, false);
+});
