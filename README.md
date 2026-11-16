@@ -22,7 +22,7 @@
 
 ## 남은 일
 
-- 지표층 시상(`groundSeeing`)은 파라날 탑 위 관측과 맞춘 것이라 낮은 관측지에서는 작게 나올 수 있다. 한국 관측지의 시상 관측값이 생기면 `tools/seeing/`으로 다시 맞춘다.
+- 한국 관측값은 보현산 SLODAR 평균(약 30밤, 1.22″)뿐이다. 이것과 견주면 사이트 식은 겨울 맑은 밤에 크게 낸다(1.57″, 주로 자유대기) — 평균 하나라 식은 그대로 두었다(`docs/시상보정.md` 3.6절). 밤별 관측값이 생기면 `tools/seeing/`으로 겨울 자유대기를 다시 맞춘다.
 - 상세 표의 「정오~다음 날 정오」는 24시간을 더해 정한다 — 일광절약시간을 쓰는 외국 관측지는 시간이 바뀌는 날 끝이 1시간 어긋난다(한국은 해당 없음).
 
 ## 구조
@@ -47,7 +47,7 @@
 | `vendor/` | astronomy-engine 2.1.19 고정본(MIT) |
 | `docs/concept.html` · `widgets-concept.html` | 승인받은 디자인 시안(위젯 시안은 주소 끝에 `?art`를 붙이면 폰 화면에 올린 모습). 색은 톤 다운 전 것이다 |
 | `docs/tone-concept.html` | 지금 색의 본판과 기상 위젯(평면·유리풍)을 폰 화면에 올린 모습 |
-| `docs/시상보정.md` · `tools/seeing/` | 시상 식의 이론·보정 보고서와 다시 맞출 때 쓰는 스크립트(받기 → 짝짓기 → 맞추기, meteoblue 재료 시험은 `meteoblue.mjs` → `meteoblue.py`) |
+| `docs/시상보정.md` · `tools/seeing/` | 시상 식의 이론·보정 보고서와 다시 맞출 때 쓰는 스크립트(받기 → 짝짓기 → 맞추기, meteoblue 재료 시험은 `meteoblue.mjs` → `meteoblue.py`, 보현산 관측과 견주기는 `bohyun.mjs`) |
 
 로컬 실행: `python -m http.server 8741` 뒤 `http://localhost:8741/`.
 
