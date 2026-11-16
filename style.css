@@ -125,6 +125,10 @@ tbody tr:last-child td { border-bottom: 0; }
 .detail { font-size: 11px; table-layout: fixed; }
 .detail th { font-size: 9.5px; letter-spacing: 0; }
 .detail th, .detail td { padding: 5px 1px; }
+.detail td { border: 1px solid var(--card); }
+.detail td.cc { background: color-mix(in srgb, var(--cloud) var(--c), var(--cbase)); }
+.detail td.cc.hi { color: var(--bg); }
+:root[data-theme="red"] .detail td.cc { color: var(--ink); text-shadow: 0 0 2px #000, 0 0 2px #000, 0 0 3px #000; }
 .detail th:nth-child(5), .detail td:nth-child(5) { width: 11%; }
 .detail th:nth-child(8), .detail td:nth-child(8) { width: 21%; }
 .detail th:nth-child(9), .detail td:nth-child(9) { width: 14%; }

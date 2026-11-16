@@ -82,7 +82,8 @@ function render() {
   $('moonline').textContent = `달 ${Math.round(v.moon.frac * 100)}% ${v.moon.name} · 월령 ${v.moon.age.toFixed(1)}일`;
 
   // 기상 띠
-  $('weather-card').hidden = !v.hours.length;
+  $('weather-card').hidden = !v.day.length; // hours는 day의 부분집합
+  if (!v.hours.length) { $('band-chart').innerHTML = ''; $('wx-read').innerHTML = ''; } // 이전 밤의 띠가 남지 않게
   if (v.hours.length) {
     const r0 = x => String(Math.round(x));
     $('band-chart').innerHTML = C.bandChart({
@@ -98,11 +99,16 @@ function render() {
         { label: '바람', kind: 'plain', value: h => h.wind10, text: r0 },
       ],
     });
-    $('detail-body').innerHTML = v.hours.filter(h => h.t >= v.sc.t0 && h.t <= v.sc.t1).map(h => `<tr>
-<td>${hh(h.t)}</td><td>${fx(h.low)}</td><td>${fx(h.mid)}</td><td>${fx(h.high)}</td><td>${fx(h.seeing, 1)}</td><td>${fx(h.index)}</td>
-<td>${fx(h.jet)}</td><td>${h.bad ? `${h.bad.bot.toFixed(1)}–${h.bad.top.toFixed(1)}` : '–'}</td><td>${h.bad ? h.bad.grad.toFixed(1) : '–'}</td>
-<td>${fx(h.temp)}</td><td>${fx(h.rh)}</td></tr>`).join('');
   }
+  // 시간별 상세 표: 그날 정오부터 다음 날 정오까지, 기상 띠와 같은 칠
+  const td = C.detailCell, cloud = x => td(fx(x), { kind: 'cloud', value: x });
+  $('detail-body').innerHTML = v.day.map(h => {
+    const gs = { kind: 'grade', grade: M.gradeSeeing(h.seeing) };
+    return `<tr><td>${hh(h.t)}</td>${cloud(h.low)}${cloud(h.mid)}${cloud(h.high)}${td(fx(h.seeing, 1), gs)}${td(fx(h.index), gs)}`
+      + td(fx(h.jet), { kind: 'grade', grade: M.gradeJet(h.jet) })
+      + `<td>${h.bad ? `${h.bad.bot.toFixed(1)}–${h.bad.top.toFixed(1)}` : '–'}</td><td>${h.bad ? h.bad.grad.toFixed(1) : '–'}</td>
+<td>${fx(h.temp)}</td><td>${fx(h.rh)}</td></tr>`;
+  }).join('');
 
   // 천체 제원
   $('body-rows').innerHTML = v.table.map(b => {

@@ -746,6 +746,7 @@ function baseNoon(now, offMs) {
 /**
  * noon(그날 현지 정오)에 시작하는 밤 하나.
  * data: normalize()의 결과 또는 null. bodies: false면 천체 자취·제원을 건너뛴다(여러 밤의 요약만 필요할 때).
+ * 반환의 hours는 밤 구간, day는 정오부터 다음 날 정오까지의 시간별 자료다.
  * outer: 천왕성·해왕성을 표에 넣는다. outerTracks: 그 자취까지 계산한다(기본은 outer와 같다).
  */
 function nightView(sky, place, data, noon, { outer = false, outerTracks = outer, bodies = true, stepMin = 10 } = {}) {
@@ -758,7 +759,8 @@ function nightView(sky, place, data, noon, { outer = false, outerTracks = outer,
   const moon = sky.moon(mid), moonEv = table.find(b => b.id === 'Moon');
 
   const elev = data?.elev ?? place.elev ?? 0;
-  const hours = (data?.hours ?? []).filter(h => h.t >= t0 - HOUR / 2 && h.t <= t1 + HOUR / 2).map(h => {
+  const inNight = h => h.t >= t0 - HOUR / 2 && h.t <= t1 + HOUR / 2, inDay = h => h.t >= noon && h.t <= noon + 24 * HOUR;
+  const all = (data?.hours ?? []).filter(h => inNight(h) || inDay(h)).map(h => {
     const see = seeing(h.levels, h.wind10, elev);
     const x = {
       ...h, seeing: see, index: seeingIndex(see), jet: jetSpeed(h.levels), bad: badLayer(h.levels, elev),
@@ -767,9 +769,11 @@ function nightView(sky, place, data, noon, { outer = false, outerTracks = outer,
     x.score = hourScore(x);
     return x;
   });
+  // hours: 밤(그림의 시간축) · day: 그날 정오부터 다음 날 정오까지(상세 표)
+  const hours = all.filter(inNight), day = all.filter(inDay);
   const darkFrom = night.astroEnd ?? night.sunset ?? t0, darkTo = night.astroStart ?? night.sunrise ?? t1;
   const dark = hours.filter(h => h.t >= darkFrom && h.t <= darkTo);
-  return { noon, night, t0, t1, tracks, table, moon, moonEv, hours, dark, summary: nightSummary(dark), darkFrom, darkTo };
+  return { noon, night, t0, t1, tracks, table, moon, moonEv, hours, day, dark, summary: nightSummary(dark), darkFrom, darkTo };
 }
 
 /** 달이 그 밤에 지는지·뜨는지 한 마디 */
@@ -967,6 +971,19 @@ const clampN = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 const CLOUD_INK_FLIP = 48;
 
 /**
+ * 시간별 상세 표의 칸. 기상 띠와 같은 규칙으로 칠한다 — 구름은 양만큼 밝아지고(숫자는 CLOUD_INK_FLIP부터 어두운 글자), 등급은 g·m·b.
+ * kind: 'cloud' | 'grade'(grade는 'g'·'m'·'b' 또는 null) | 그 밖(칠하지 않음)
+ */
+function detailCell(text, { kind, value, grade } = {}) {
+  if (kind === 'cloud' && Number.isFinite(value)) {
+    const c = Math.round(clampN(value, 0, 100));
+    return `<td class="cc${Math.round(value) >= CLOUD_INK_FLIP ? ' hi' : ''}" style="--c:${c}%">${esc(text)}</td>`;
+  }
+  if (kind === 'grade' && grade) return `<td class="g-${grade}">${esc(text)}</td>`;
+  return `<td>${esc(text)}</td>`;
+}
+
+/**
  * 기상 띠. rows: [{label, kind:'cloud'|'grade'|'plain', value(h), text?(h), grade?(v)}]
  * hours: [{t, ...}] — 각 칸은 그 시각 앞뒤 30분.
  */
@@ -1002,7 +1019,7 @@ ${body}${ticksSvg(sc, offsetSec, 0, 0, h + 14)}
 </svg>`;
 }
 
-return { scale, hourTicks, altitudeChart, bandChart, W, GUTTER, PLOT_H, DASH, altY, CLOUD_INK_FLIP };
+return { scale, hourTicks, altitudeChart, detailCell, bandChart, W, GUTTER, PLOT_H, DASH, altY, CLOUD_INK_FLIP };
 })();
 // ── widget/layout.js
 __m["widget/layout.js"] = (() => {

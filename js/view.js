@@ -23,6 +23,7 @@ export function baseNoon(now, offMs) {
 /**
  * noon(그날 현지 정오)에 시작하는 밤 하나.
  * data: normalize()의 결과 또는 null. bodies: false면 천체 자취·제원을 건너뛴다(여러 밤의 요약만 필요할 때).
+ * 반환의 hours는 밤 구간, day는 정오부터 다음 날 정오까지의 시간별 자료다.
  * outer: 천왕성·해왕성을 표에 넣는다. outerTracks: 그 자취까지 계산한다(기본은 outer와 같다).
  */
 export function nightView(sky, place, data, noon, { outer = false, outerTracks = outer, bodies = true, stepMin = 10 } = {}) {
@@ -35,7 +36,8 @@ export function nightView(sky, place, data, noon, { outer = false, outerTracks =
   const moon = sky.moon(mid), moonEv = table.find(b => b.id === 'Moon');
 
   const elev = data?.elev ?? place.elev ?? 0;
-  const hours = (data?.hours ?? []).filter(h => h.t >= t0 - HOUR / 2 && h.t <= t1 + HOUR / 2).map(h => {
+  const inNight = h => h.t >= t0 - HOUR / 2 && h.t <= t1 + HOUR / 2, inDay = h => h.t >= noon && h.t <= noon + 24 * HOUR;
+  const all = (data?.hours ?? []).filter(h => inNight(h) || inDay(h)).map(h => {
     const see = seeing(h.levels, h.wind10, elev);
     const x = {
       ...h, seeing: see, index: seeingIndex(see), jet: jetSpeed(h.levels), bad: badLayer(h.levels, elev),
@@ -44,9 +46,11 @@ export function nightView(sky, place, data, noon, { outer = false, outerTracks =
     x.score = hourScore(x);
     return x;
   });
+  // hours: 밤(그림의 시간축) · day: 그날 정오부터 다음 날 정오까지(상세 표)
+  const hours = all.filter(inNight), day = all.filter(inDay);
   const darkFrom = night.astroEnd ?? night.sunset ?? t0, darkTo = night.astroStart ?? night.sunrise ?? t1;
   const dark = hours.filter(h => h.t >= darkFrom && h.t <= darkTo);
-  return { noon, night, t0, t1, tracks, table, moon, moonEv, hours, dark, summary: nightSummary(dark), darkFrom, darkTo };
+  return { noon, night, t0, t1, tracks, table, moon, moonEv, hours, day, dark, summary: nightSummary(dark), darkFrom, darkTo };
 }
 
 /** 달이 그 밤에 지는지·뜨는지 한 마디 */

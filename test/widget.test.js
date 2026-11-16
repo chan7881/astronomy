@@ -402,3 +402,27 @@ test('색: 구름 칸 글자색이 바뀌는 경계에서 고른 글자가 다�
   for (const p of [CLOUD_INK_FLIP, 70, 100]) assert.ok(ratio(cell(p), rgb(T.bg)) > ratio(cell(p), rgb(T.ink)), `${p}%`);
   for (let p = 0; p <= 100; p++) assert.ok(ratio(cell(p), rgb(p >= CLOUD_INK_FLIP ? T.bg : T.ink)) >= 3.5, `${p}%`);
 });
+
+test('상세 표: 그날 정오부터 다음 날 정오까지 25시간이고, 밤 구간(hours)은 그대로다', () => {
+  const data = fixture(), noon = baseNoon(NOW, KST), v = nightView(sky, POHANG, data, noon);
+  assert.equal(v.day.length, 25);
+  assert.equal(v.day[0].t, kst('2026-11-16T12:00'));
+  assert.equal(v.day.at(-1).t, kst('2026-11-17T12:00'));
+  assert.ok(v.day.every((h, i) => i === 0 || h.t - v.day[i - 1].t === 3600e3));
+  assert.ok(v.day.every(h => Number.isFinite(h.seeing) && Number.isFinite(h.jet)), '낮 시간에도 시상·제트가 계산된다');
+  assert.ok(v.hours.length < v.day.length && v.hours.every(h => h.t >= v.t0 - 1800e3 && h.t <= v.t1 + 1800e3));
+  assert.ok(v.hours.every(h => v.day.some(d => d.t === h.t && d.seeing === h.seeing)));
+});
+
+test('상세 표: 칸은 기상 띠와 같은 규칙으로 칠한다', async () => {
+  const { detailCell, CLOUD_INK_FLIP } = await import('../js/charts.js');
+  assert.equal(detailCell('0', { kind: 'cloud', value: 0 }), '<td class="cc" style="--c:0%">0</td>');
+  assert.equal(detailCell('47', { kind: 'cloud', value: CLOUD_INK_FLIP - 1 }), '<td class="cc" style="--c:47%">47</td>');
+  assert.equal(detailCell('48', { kind: 'cloud', value: CLOUD_INK_FLIP }), '<td class="cc hi" style="--c:48%">48</td>');
+  assert.equal(detailCell('100', { kind: 'cloud', value: 130 }), '<td class="cc hi" style="--c:100%">100</td>');
+  assert.equal(detailCell('–', { kind: 'cloud', value: null }), '<td>–</td>');
+  assert.equal(detailCell('1.2', { kind: 'grade', grade: 'g' }), '<td class="g-g">1.2</td>');
+  assert.equal(detailCell('35', { kind: 'grade', grade: 'b' }), '<td class="g-b">35</td>');
+  assert.equal(detailCell('–', { kind: 'grade', grade: null }), '<td>–</td>');
+  assert.equal(detailCell('10'), '<td>10</td>');
+});

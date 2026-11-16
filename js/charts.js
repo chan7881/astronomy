@@ -81,6 +81,19 @@ const clampN = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 export const CLOUD_INK_FLIP = 48;
 
 /**
+ * 시간별 상세 표의 칸. 기상 띠와 같은 규칙으로 칠한다 — 구름은 양만큼 밝아지고(숫자는 CLOUD_INK_FLIP부터 어두운 글자), 등급은 g·m·b.
+ * kind: 'cloud' | 'grade'(grade는 'g'·'m'·'b' 또는 null) | 그 밖(칠하지 않음)
+ */
+export function detailCell(text, { kind, value, grade } = {}) {
+  if (kind === 'cloud' && Number.isFinite(value)) {
+    const c = Math.round(clampN(value, 0, 100));
+    return `<td class="cc${Math.round(value) >= CLOUD_INK_FLIP ? ' hi' : ''}" style="--c:${c}%">${esc(text)}</td>`;
+  }
+  if (kind === 'grade' && grade) return `<td class="g-${grade}">${esc(text)}</td>`;
+  return `<td>${esc(text)}</td>`;
+}
+
+/**
  * 기상 띠. rows: [{label, kind:'cloud'|'grade'|'plain', value(h), text?(h), grade?(v)}]
  * hours: [{t, ...}] — 각 칸은 그 시각 앞뒤 30분.
  */
