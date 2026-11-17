@@ -56,6 +56,7 @@
 | `docs/시상보정.md` · `tools/seeing/` | 시상 식의 이론·보정 보고서와 다시 맞출 때 쓰는 스크립트(받기 → 짝짓기 → 맞추기, meteoblue 재료 시험은 `meteoblue.mjs` → `meteoblue.py`, 보현산 관측과 견주기는 `bohyun.mjs`) |
 
 로컬 실행: `python -m http.server 8741` 뒤 `http://localhost:8741/`.
+`style.css`를 고치면 `index.html`의 `style.css?v=날짜`도 바꾼다 — Pages 캐시(10분) 동안 폰이 새 HTML에 옛 CSS를 붙인다.
 
 ## 계산
 
