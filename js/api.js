@@ -58,17 +58,33 @@ async function getJson(url, ms) {
   return r.json();
 }
 
+// 서버가 답 없이 멈추면(2026-11-17 api.open-meteo.com 장애) 화면이 「불러오는 중」에 머문다 — 시간 제한을 둔다
+export const FETCH_MS = 20e3, AIR_MS = 10e3;
+// 마지막으로 받은 예보(한 곳)를 남겨 두고, 받기에 실패하면 이만큼 지난 것까지 대신 보인다
+export const LAST_KEY = 'fc-last', LAST_OK = 24 * 3600e3;
+const coordKey = (lat, lon) => `${lat.toFixed(3)},${lon.toFixed(3)}`;
+
 /** 예보를 받아 정규화한다. 대기질은 실패해도 계속한다. 10분 캐시. */
 export async function loadForecast(lat, lon) {
-  const key = `fc:${lat.toFixed(3)},${lon.toFixed(3)}`;
+  const key = `fc:${coordKey(lat, lon)}`;
   try {
     const c = JSON.parse(sessionStorage.getItem(key));
     if (c && Date.now() - c.at < TTL) return c.data;
   } catch { /* 캐시 없음 */ }
-  const [fc, air] = await Promise.all([getJson(forecastUrl(lat, lon)), getJson(airUrl(lat, lon)).catch(() => null)]);
-  const data = normalize(fc, air);
-  try { sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), data })); } catch { /* 용량 초과는 무시 */ }
+  const [fc, air] = await Promise.all([getJson(forecastUrl(lat, lon), FETCH_MS), getJson(airUrl(lat, lon), AIR_MS).catch(() => null)]);
+  const data = normalize(fc, air), at = Date.now();
+  const json = JSON.stringify(data);
+  try { sessionStorage.setItem(key, `{"at":${at},"data":${json}}`); } catch { /* 용량 초과는 무시 */ }
+  try { localStorage.setItem(LAST_KEY, `{"key":"${coordKey(lat, lon)}","at":${at},"data":${json}}`); } catch { /* 저장 불가 환경 */ }
   return data;
+}
+
+/** 받기에 실패했을 때 대신 보일 예보: 같은 관측지에서 LAST_OK 안에 받은 것 {at, data}, 없으면 null */
+export function lastForecast(lat, lon, now = Date.now()) {
+  try {
+    const c = JSON.parse(localStorage.getItem(LAST_KEY));
+    return c && c.key === coordKey(lat, lon) && now - c.at < LAST_OK && c.data?.hours?.length ? { at: c.at, data: c.data } : null;
+  } catch { return null; }
 }
 
 // ── 지명 ───────────────────────────────────────────────

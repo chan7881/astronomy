@@ -88,3 +88,46 @@ test('현재 위치: GPS가 안 잡히면 대강의 위치로 한 번 더, 권�
   await assert.rejects(locate(geo([{ code: 2 }, { code: 3 }])), /위치를 찾지 못했습니다/);
   await assert.rejects(locate(null), /위치 기능 없음/);
 });
+
+// ── 예보 받기: 시간 제한 · 지난 예보 대신 보이기 ─────────────────
+import { loadForecast, lastForecast, LAST_KEY, LAST_OK } from '../js/api.js';
+function fakeStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), m }; }
+const okResp = body => ({ ok: true, status: 200, json: async () => body });
+const FC = { utc_offset_seconds: 32400, elevation: 20, timezone: 'Asia/Seoul', hourly: { time: ['2026-11-17T00:00'], temperature_2m: [5], dew_point_2m: [1], relative_humidity_2m: [70], cloud_cover: [10], cloud_cover_low: [10], cloud_cover_mid: [0], cloud_cover_high: [0], wind_speed_10m: [2], wind_direction_10m: [0], wind_gusts_10m: [3] } };
+
+test('예보 받기: 서버가 답 없이 멈추면 시간 제한으로 실패한다(무한 대기 없음)', async () => {
+  globalThis.sessionStorage = fakeStorage(); globalThis.localStorage = fakeStorage();
+  const api = await import('../js/api.js');
+  const realFetch = globalThis.fetch;
+  let signals = [];
+  globalThis.fetch = (url, opt) => { signals.push(opt?.signal); return new Promise((_, rej) => opt?.signal?.addEventListener('abort', () => rej(opt.signal.reason))); };
+  const realTimeout = AbortSignal.timeout, asked = [];
+  AbortSignal.timeout = ms => {   // 시험은 20ms로 줄여 본다(진짜 타이머는 unref라 시험이 먼저 끝나 버린다)
+    asked.push(ms); const c = new AbortController();
+    setTimeout(() => c.abort(new DOMException('시간 초과', 'TimeoutError')), 20); return c.signal;
+  };
+  try {
+    await assert.rejects(loadForecast(36.019, 129.343), e => e.name === 'TimeoutError');
+    assert.equal(signals.length, 2);
+    assert.ok(signals.every(s => s instanceof AbortSignal), '모든 요청에 시간 제한');
+    assert.deepEqual(asked, [api.FETCH_MS, api.AIR_MS]);
+    assert.ok(api.FETCH_MS <= 30e3 && api.FETCH_MS >= 5e3);
+    assert.equal(lastForecast(36.019, 129.343), null, '실패한 것은 남기지 않는다');
+  } finally { globalThis.fetch = realFetch; AbortSignal.timeout = realTimeout; }
+});
+
+test('예보 받기: 받은 예보를 남기고, 같은 관측지·하루 안이면 대신 보인다', async () => {
+  globalThis.sessionStorage = fakeStorage(); globalThis.localStorage = fakeStorage();
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async url => okResp(url.includes('air-quality') ? { utc_offset_seconds: 32400, hourly: { time: [] } } : FC);
+  try {
+    await loadForecast(36.019, 129.343);
+    const now = Date.now();
+    const last = lastForecast(36.019, 129.343, now);
+    assert.ok(last && last.data.hours.length === 1 && now - last.at < 5000);
+    assert.equal(lastForecast(36.2, 129.343, now), null, '다른 관측지');
+    assert.equal(lastForecast(36.019, 129.343, now + LAST_OK + 1), null, '하루 지남');
+    globalThis.localStorage.setItem(LAST_KEY, '{망가짐');
+    assert.equal(lastForecast(36.019, 129.343, now), null, '망가진 저장본');
+  } finally { globalThis.fetch = realFetch; }
+});

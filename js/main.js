@@ -1,6 +1,6 @@
 import * as M from './model.js';
 import { makeSky } from './sky.js';
-import { loadForecast, searchPlace, reversePlace } from './api.js';
+import { loadForecast, lastForecast, searchPlace, reversePlace } from './api.js';
 import * as C from './charts.js';
 import * as P from './places.js';
 import * as V from './view.js';
@@ -166,17 +166,25 @@ function bindPlot(el) {
 }
 
 // ── 불러오기·이벤트 ──────────────────────────────────────
-let loadSeq = 0;
+let loadSeq = 0, retry = null;
+const RETRY_MS = 60e3;
 async function load() {
   const seq = ++loadSeq, place = state.place;
+  clearTimeout(retry);
   document.body.classList.add('loading');
   let data = null, error = null;
   try { data = await loadForecast(place.lat, place.lon); }
-  catch (e) { error = `예보를 불러오지 못했습니다 (${e.message})`; }
+  catch (e) { error = `예보를 불러오지 못했습니다 (${e.name === 'TimeoutError' ? '응답 없음' : e.message})`; }
   if (seq !== loadSeq) return;            // 그사이 다른 요청이 나갔다 — 늦게 온 답은 버린다
   document.body.classList.remove('loading');
-  if (data) state.data = data;            // 실패하면 앞서 받은 예보를 그대로 둔다
+  if (data) { state.data = data; state.dataAt = Date.now(); }   // 실패하면 앞서 받은 예보를 그대로 둔다
+  else if (!state.data) {                 // 앞서 받은 것이 없으면 지난번에 저장한 예보
+    const last = lastForecast(place.lat, place.lon);
+    if (last) { state.data = last.data; state.dataAt = last.at; }
+  }
+  if (error && state.data) error += ` · ${V.clock(state.data.offsetSec * 1000).hm(state.dataAt)}에 받은 예보`;   // 재시도가 실패해도 계속 적는다
   state.error = error;
+  if (error) retry = setTimeout(() => { if (!document.hidden) load(); }, RETRY_MS);   // 장애가 풀리면 저절로 돌아온다
   render();
 }
 
@@ -245,6 +253,7 @@ function init() {
   bindPlot($('alt-chart')); bindPlot($('band-chart'));
   render(); load();
   setInterval(() => { if (!document.hidden) load(); }, 15 * 60e3);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && state.error) load(); });   // 폰에서 다시 열면 바로 재시도
 }
 
 init();
