@@ -196,7 +196,7 @@ const WEATHER_ROWS = [
 ];
 
 /** 기상 띠. step: 몇 시간을 한 칸으로 묶을지(작은 위젯은 3) */
-function bandChart(c, m, v, bx, by, bw, bh, list = BAND_ROWS, { step = 1, GX = 30, GAP = 5 } = {}) {
+function bandChart(c, m, v, bx, by, bw, bh, list = BAND_ROWS, { step = 1, GX = 48, GAP = 5 } = {}) {
   const { hh } = clock(m.offMs), all = bandHours(v), hours = [];
   for (let i = 0; i < all.length; i += step) hours.push(all.slice(i, i + step));
   if (!hours.length) { c.text('예보 자료 없음', bx + bw / 2, by + bh / 2 - 8, { size: 12, color: T.ink3, align: 'c' }); return; }
@@ -220,6 +220,7 @@ function bandChart(c, m, v, bx, by, bw, bh, list = BAND_ROWS, { step = 1, GX = 3
     y += rh;
   });
   hours.forEach((h, i) => c.text(hh(h[0].t), bx + GX + i * cw + cw / 2, by + bh - 12, { size: 9, color: T.ink3, align: 'c' }));
+  placeName(c, m, bx + 4, by + bh - 12, { size: 9, maxW: GX - 4 });
 }
 
 // ── 글귀 ───────────────────────────────────────────────
@@ -242,6 +243,26 @@ const cautionRow = (c, s) => (x, y) => {
 /** 고도 위젯: 곡선과 아래 글귀를 나누는 선의 y */
 export const ALT_RULE = 132;
 
+// ── 관측지 이름 ─────────────────────────────────────────
+// 제목 줄 없이 위젯마다 빈 자리에 넣는다(2026-11-17 A안). 내 위치(place.here)면 이름 앞에 위치 화살표. 너비 maxW를 넘으면 뒤를 줄인다. 반환: 그린 너비
+function arrow(c, x, y, s, color) {
+  c.poly([[x + s, y], [x, y + s * 0.45], [x + s * 0.45, y + s * 0.55], [x + s * 0.55, y + s]], { fill: color, close: true });
+}
+function fitName(name, size, maxW) {
+  let t = String(name || '');
+  if (textWidth(t, size) <= maxW) return t;
+  while (t.length > 1 && textWidth(t + '…', size) > maxW) t = t.slice(0, -1);
+  return t + '…';
+}
+function placeName(c, m, x, y, { size = 10.5, align = 'l', color = T.ink3, maxW = 120 } = {}) {
+  const here = !!m.place.here, aw = here ? size * 0.8 + 3 : 0;
+  const name = fitName(m.place.name, size, maxW - aw), w = aw + textWidth(name, size);
+  const x0 = align === 'l' ? x : align === 'r' ? x - w : x - w / 2;
+  if (here) arrow(c, x0, y + size * 0.3, size * 0.8, color);
+  c.text(name, x0 + aw, y, { size, weight: 'b', color });
+  return w;
+}
+
 // ── 위젯 13종 ──────────────────────────────────────────
 const LAYOUTS = {
   점수(m) {
@@ -249,6 +270,7 @@ const LAYOUTS = {
     scoreBox(c, s, PAD, 14, 68, 64, 32, false);
     if (s) tag(c, s.grade, 92, 24, 15);
     c.text('관측 점수', 92, 48, { size: 11, color: T.ink2 });
+    placeName(c, m, 92, 65, { size: 10, maxW: 144 - 92 });
     rows(c, [['최적', winShort(m, v)], ['구름', pct(s && s.cloudAvg)]], PAD, 88, 130, { rh: 26 });
     return c;
   },
@@ -256,8 +278,9 @@ const LAYOUTS = {
     const v = m.nights[0], { hm } = clock(m.offMs), c = frame('달');
     moonDisc(c, v.moon.deg, 44, 46, 30, m.place.lat < 0);
     c.text(v.moon.name, 86, 17, { size: 16, weight: 'b' });
-    c.text(`밝은 면 ${Math.round(v.moon.frac * 100)}%`, 86, 42, { size: 11, color: T.ink2 });
-    c.text(`월령 ${v.moon.age.toFixed(1)}`, 86, 58, { size: 11, color: T.ink2 });
+    c.text(`밝은 면 ${Math.round(v.moon.frac * 100)}%`, 86, 38, { size: 11, color: T.ink2 });
+    c.text(`월령 ${v.moon.age.toFixed(1)}`, 86, 50, { size: 11, color: T.ink2 });
+    placeName(c, m, 86, 67, { size: 10, maxW: 144 - 86 });
     rows(c, [['뜸', hm(v.moonEv.rise)], ['짐', hm(v.moonEv.set)]], PAD, 88, 130, { rh: 26 });
     return c;
   },
@@ -268,6 +291,7 @@ const LAYOUTS = {
     c.text('″', PAD + textWidth(see, 34) + 1, 15, { size: 16, weight: 'b' });
     if (s) tag(c, gradeSeeing(s.seeingAvg), PAD + textWidth(see, 34) + 16, 29, 13);
     c.text('시상 평균', PAD, 58, { size: 11, color: T.ink2 });
+    placeName(c, m, 158 - PAD, 59, { size: 10, align: 'r', maxW: 158 - PAD * 2 - textWidth('시상 평균', 11) - 8 });
     const val = (txt, g, extra) => (x, y) => { c.text(txt, x, y); if (g) tag(c, g, x + textWidth(txt, 12) + 5, y, 12, extra || GRADE_KO[g]); };
     rows(c, [
       ['제트', s && fin(s.jetMax) ? val(`${Math.round(s.jetMax)}m/s`, gradeJet(s.jetMax)) : '–'],
@@ -281,6 +305,7 @@ const LAYOUTS = {
     c.text(m.isNow ? hm(m.evalT) : `해진 뒤 ${hm(m.evalT)}`, 158 - PAD, 14, { size: 10.5, weight: 'b', color: T.ink3, align: 'r' });
     if (b) {
       c.text(b.ko, PAD, 12, { size: 34, weight: 'h', color: T.body[b.id] });
+      placeName(c, m, 158 - PAD, 32, { size: 10, align: 'r', maxW: 158 - PAD * 2 - textWidth(b.ko, 34) - 6 });
       c.text(`${b.mag.toFixed(1)}등급 · ${b.constellation}`, PAD, 58, { size: 11, color: T.ink2 });
       rows(c, [['고도', `${Math.round(b.alt)}° ${b.dir}`], ['짐', hm(b.set)]], PAD, 88, 130, { rh: 26 });
     } else {
@@ -294,6 +319,7 @@ const LAYOUTS = {
   판정(m) {
     const v = m.nights[0], s = v.summary, { hh } = clock(m.offMs), c = frame('판정');
     scoreBox(c, s, PAD, 14, 88, 130, 44, true);
+    placeName(c, m, PAD + 3 + 44, 122, { size: 10, align: 'c', maxW: 74 });
     rows(c, [
       ['최적', winLong(m, v)],
       ['달', `${v.moon.name} · ${v.moonEvent}`],
@@ -315,10 +341,14 @@ const LAYOUTS = {
     const label = `${Math.round(v.moon.frac * 100)}% ${v.moon.name}`;
     c.text(label, R, y, { size: 12, weight: 'b', align: 'r' });
     moonDisc(c, v.moon.deg, R - textWidth(label, 12) - 16, y + 7.5, 7, m.place.lat < 0);
+    {
+      const a = 118 + textWidth(t(v.night.sunrise), 12) + 10, b = R - textWidth(label, 12) - 23 - 10;
+      placeName(c, m, (a + b) / 2, y + 1, { size: 10, align: 'c', maxW: b - a });
+    }
     return c;
   },
   '5일'(m) {
-    const c = frame('5일'), cw = (338 - 20) / 5, top = 32, base = 110;
+    const c = frame('5일'), cw = (338 - 20) / 5, top = 32, k = 6, base = 110 - k;   // k: 아래 관측지 이름 자리
     m.nights.forEach((v, i) => {
       const s = v.summary, cx = 10 + i * cw + cw / 2;
       c.rect(cx - 15, top, 30, base - top, { fill: T.band, r: 4 });
@@ -327,10 +357,11 @@ const LAYOUTS = {
         c.rect(cx - 15, base - bh, 30, bh, { fill: T[s.grade], r: 4 });
         c.text(Math.round(s.score), cx, Math.max(base - bh - 17, top - 15), { size: 13, weight: 'h', align: 'c' });
         const label = GRADE_KO[s.grade], tw = 10 * 1.05 + textWidth(label, 10);
-        tag(c, s.grade, cx - tw / 2, 115, 10);
+        tag(c, s.grade, cx - tw / 2, 115 - k, 10);
       } else c.text('–', cx, top - 15, { size: 13, weight: 'h', align: 'c', color: T.ink3 });
-      c.text(`${v.day} ${v.wd}`, cx, 131, { size: 10.5, weight: i ? 'm' : 'h', color: i ? T.ink3 : T.ink, align: 'c' });
+      c.text(`${v.day} ${v.wd}`, cx, 131 - k, { size: 10.5, weight: i ? 'm' : 'h', color: i ? T.ink3 : T.ink, align: 'c' });
     });
+    placeName(c, m, 169, 141, { size: 9.5, align: 'c', maxW: 160 });
     return c;
   },
   시간별(m) {
@@ -340,7 +371,7 @@ const LAYOUTS = {
   },
   날씨(m) {
     const v = m.nights[0], c = frame('날씨');
-    bandChart(c, m, v, 4, 12, 150, 140, BAND_ROWS, { step: 3, GX: 28 });
+    bandChart(c, m, v, 4, 12, 150, 140, BAND_ROWS, { step: 3, GX: 46 });
     return c;
   },
   기상(m) {
@@ -360,6 +391,7 @@ const LAYOUTS = {
     const v = m.nights[0], { hm } = clock(m.offMs), c = frame('천체');
     const cols = [[PAD, 'l', '천체'], [122, 'r', '뜸'], [172, 'r', '남중'], [216, 'r', '고도'], [272, 'r', '짐'], [324, 'r', '등급']];
     cols.forEach(([x, align, name]) => c.text(name, x, 14, { size: 10.5, weight: 'b', color: T.ink3, align }));
+    placeName(c, m, PAD + textWidth('천체', 10.5) + 8, 14, { size: 10.5, maxW: 122 - 26 - PAD - textWidth('천체', 10.5) - 14 });
     const rh = (354 - 32 - 8) / 8;
     v.table.forEach((b, i) => {
       const y = 32 + i * rh, ty = y + (rh - 12 * 1.2) / 2;
@@ -373,6 +405,7 @@ const LAYOUTS = {
     const c = frame('예보');
     const cols = [[PAD, 'l', '밤'], [112, 'r', '점수'], [164, 'r', '구름'], [208, 'r', '시상'], [252, 'r', '달'], [324, 'r', '최적']];
     cols.forEach(([x, align, name]) => c.text(name, x, 14, { size: 10.5, weight: 'b', color: T.ink3, align }));
+    placeName(c, m, PAD + textWidth('밤', 10.5) + 8, 14, { size: 10.5, maxW: 112 - 26 - PAD - textWidth('밤', 10.5) - 12 });
     const rh = (354 - 32 - 8) / 5;
     m.nights.forEach((v, i) => {
       const s = v.summary, y = 32 + i * rh, ty = y + (rh - 12 * 1.2) / 2;

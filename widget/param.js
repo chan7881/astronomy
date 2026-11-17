@@ -1,10 +1,12 @@
 // 위젯 설정값(Parameter) 읽기: 「종류 | 좌표 | 이름 | 유리」를 아무 순서로, |·;·쉼표 어느 것으로 나눠도 된다.
-// 예) 천체 | 36.17, 128.98 | 보현산   이름만 적고 좌표가 없으면 관측지는 포항 그대로다(위젯 머리에 포항이라고 나온다).
+// 예) 천체 | 36.17, 128.98 | 보현산   좌표가 없으면 내 위치(here)다 — 실제 좌표는 app.js가 폰에서 읽고, 못 읽으면 포항.
+// 좌표 없이 이름만 적으면 내 위치에 그 이름을 붙인다.
 import { DEFAULT_PLACE, parseCoords } from '../js/places.js';
 import { KINDS, DEFAULT_KIND } from './layout.js';
 
 // 기상만 보여 주는 위젯은 크기마다 이름이 다르다 — 어느 이름을 적어도 그 크기의 것으로
 const WEATHER = { small: '날씨', medium: '시간별', large: '기상' };
+const HERE = ['현재', '내위치', '위치', '여기'];
 const ALIAS = { 띠: '시간별', 곡선: '고도', 밤하늘: '고도', 출몰: '천체', 행성: '지금', 시상: '대기', '5일밤': '5일' };
 
 /**
@@ -18,6 +20,7 @@ export function parseParam(text, family) {
   for (let i = 0; i < toks.length; i++) {
     const tok = toks[i], bare = tok.replace(/\s/g, '');
     if (bare === '유리') { glass = true; continue; }
+    if (HERE.includes(bare)) continue;   // 좌표가 없으면 어차피 내 위치다
     let k = ALIAS[bare] || bare;
     if (Object.values(WEATHER).includes(k) && WEATHER[size]) k = WEATHER[size];
     const pair = i + 1 < toks.length ? parseCoords(tok + ', ' + toks[i + 1]) : null;   // 쉼표로 갈라진 위도, 경도
@@ -27,6 +30,18 @@ export function parseParam(text, family) {
     else name = name || tok;
   }
   if (DEFAULT_KIND[size] && (!kind || KINDS[kind] !== size)) kind = DEFAULT_KIND[size];
-  const place = coords ? { name: name || '관측지', lat: coords.lat, lon: coords.lon, elev: 0 } : { ...DEFAULT_PLACE };
+  const place = coords ? { name: name || '관측지', lat: coords.lat, lon: coords.lon, elev: 0 }
+    : { name: name || '내 위치', lat: DEFAULT_PLACE.lat, lon: DEFAULT_PLACE.lon, elev: 0, here: true, custom: !!name };   // 좌표는 app.js가 바꾼다
   return { kind, place, glass };
+}
+
+/** 내 위치 좌표를 0.01°(약 1km)로 반올림 — 조금씩 다르게 잡혀도 같은 예보·캐시를 나눠 쓴다 */
+export const roundHere = x => Math.round(x * 100) / 100;
+
+/** Scriptable Location.reverseGeocode 결과 하나 → 짧은 지명(읍·면·동 우선). 없으면 null */
+export function hereName(g) {
+  if (!g) return null;
+  const words = [g.subLocality, g.locality, g.subAdministrativeArea, g.administrativeArea]
+    .filter(Boolean).flatMap(t => String(t).trim().split(/\s+/)).filter(Boolean);
+  return words.find(w => /[동읍면리]$/.test(w)) || words[0] || g.name || null;
 }

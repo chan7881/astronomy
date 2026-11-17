@@ -1,11 +1,12 @@
 // Scriptable에서 도는 부분: 자료 받기 · 그리기 명령을 DrawContext로 옮기기 · 위젯 내놓기.
 // 계산과 배치는 data.js·layout.js에 있고 여기서는 Scriptable API만 다룬다.
-/* global Astronomy, config, args, Script, Request, FileManager, ListWidget, DrawContext, Size, Rect, Point, Path, Color, Font, Timer */
+/* global Astronomy, config, args, Script, Request, FileManager, ListWidget, DrawContext, Size, Rect, Point, Path, Color, Font, Timer, Location */
 import { makeSky } from '../js/sky.js';
 import { forecastUrl, airUrl, normalize } from '../js/api.js';
 import { widgetModel } from './data.js';
 import { layout, lockText, lockCircle } from './layout.js';
-import { parseParam } from './param.js';
+import { parseParam, roundHere, hereName } from './param.js';
+import { DEFAULT_PLACE } from '../js/places.js';
 
 const SITE = 'https://chan7881.github.io/astronomy/';
 const TTL = 30 * 60e3;
@@ -60,6 +61,28 @@ async function loadData(place) {
     // 내가 쓴 표시일 때만 지운다(그사이 다른 위젯이 덮어썼으면 그쪽 것이다)
     try { if (fm.fileExists(lock) && fm.readString(lock) === mine) fm.remove(lock); } catch (e) { /* 남아도 LOCK_MS 뒤엔 무시된다 */ }
   }
+}
+
+// 내 위치: 10분 안에 다른 위젯이 읽은 것이 있으면 그것을 쓴다(한꺼번에 깨어날 때 위치를 여러 번 묻지 않게).
+// 위젯 안에서는 위치 읽기가 늦거나 실패할 수 있어 3km 정밀도·5초 제한으로 묻고, 못 읽으면 마지막 위치, 그것도 없으면 포항.
+const HERE_FRESH = 10 * 60e3, HERE_WAIT = 5e3, GEO_WAIT = 3e3;
+const within = (p, ms) => Promise.race([p, sleep(ms).then(() => null)]);
+export async function resolveHere(place) {
+  const fm = FileManager.local(), path = fm.joinPath(fm.cacheDirectory(), 'astro-here.json');
+  let saved = null;
+  try { if (fm.fileExists(path)) saved = JSON.parse(fm.readString(path)); } catch (e) { saved = null; }
+  if (!saved || !Number.isFinite(saved.lat) || !Number.isFinite(saved.lon) || !Number.isFinite(saved.at)) saved = null;   // 깨진 저장본
+  const use = h => ({ ...place, lat: h.lat, lon: h.lon, name: place.custom ? place.name : h.name || '내 위치' });
+  if (saved && Date.now() - saved.at < HERE_FRESH) return use(saved);
+  let pos = null;
+  try { Location.setAccuracyToThreeKilometers(); pos = await within(Location.current(), HERE_WAIT); } catch (e) { pos = null; }
+  if (!pos || !Number.isFinite(pos.latitude)) return saved ? use(saved) : { ...DEFAULT_PLACE };
+  const lat = roundHere(pos.latitude), lon = roundHere(pos.longitude);
+  let name = saved && saved.lat === lat && saved.lon === lon ? saved.name : null;   // 그대로면 지명을 다시 묻지 않는다
+  if (!name) { try { const g = await within(Location.reverseGeocode(lat, lon, 'ko_KR'), GEO_WAIT); name = hereName(g && g[0]); } catch (e) { name = null; } }
+  const h = { at: Date.now(), lat, lon, name };   // 지명을 못 찾았으면 비워 두어 다음에 다시 묻는다
+  try { fm.writeString(path, JSON.stringify(h)); } catch (e) { /* 없어도 된다 */ }
+  return use(h);
 }
 
 // '#rrggbb' 또는 '#rrggbbaa'
@@ -121,7 +144,8 @@ export async function run() {
   const family = config.widgetFamily || 'large';
   // 「진단」은 예전 임시 설정값 — 남아 있어도 지명으로 읽지 않는다
   const param = String(args.widgetParameter ?? '').replace(/진단/g, '');
-  const { kind, place, glass } = parseParam(param, family);
+  const { kind, place: asked, glass } = parseParam(param, family);
+  const place = asked.here ? await resolveHere(asked) : asked;
   const { data, soon } = await loadData(place);
   const model = widgetModel(makeSky(Astronomy), place, data, Date.now());
   let w;

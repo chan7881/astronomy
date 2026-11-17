@@ -7,7 +7,7 @@ import { normalize, LEVELS } from '../js/api.js';
 import { baseNoon, nightView } from '../js/view.js';
 import { widgetModel, highestBody, bandHours } from '../widget/data.js';
 import { layout, lockText, lockCircle, moonShape, dashes, textWidth, blockValue, KINDS, SIZES, ALT_RULE } from '../widget/layout.js';
-import { parseParam } from '../widget/param.js';
+import { parseParam, roundHere, hereName } from '../widget/param.js';
 import { toSvg } from '../widget/svg.js';
 import { T } from '../widget/theme.js';
 import { bundle, declNames, OUT } from '../widget/build.mjs';
@@ -117,7 +117,7 @@ test('점선: 그린 길이와 조각 수', () => {
 });
 
 test('설정값: 종류·좌표·이름을 아무 순서로, 크기에 맞지 않으면 기본 위젯', () => {
-  assert.deepEqual(parseParam(null, 'small'), { kind: '점수', place: { ...POHANG, region: '경상북도 · 대한민국' }, glass: false });
+  assert.deepEqual(parseParam(null, 'small'), { kind: '점수', place: { name: '내 위치', lat: 36.019, lon: 129.343, elev: 0, here: true, custom: false }, glass: false });
   assert.equal(parseParam('달', 'small').kind, '달');
   assert.equal(parseParam('달', 'medium').kind, '판정');
   assert.equal(parseParam('5일 ', 'medium').kind, '5일');
@@ -335,7 +335,9 @@ test('설정값: 쉼표로 나눠 적어도 종류·좌표·이름을 읽는다'
   assert.equal(a.kind, '달'); assert.deepEqual([a.place.lat, a.place.lon], [36.17, 128.98]);
   const b = parseParam('36.17,128.98,보현산', 'small');
   assert.deepEqual(b.place, { name: '보현산', lat: 36.17, lon: 128.98, elev: 0 });
-  assert.equal(parseParam('보현산', 'small').place.name, '포항');   // 좌표가 없으면 포항 그대로
+  const c = parseParam('보현산', 'small').place;   // 좌표가 없으면 내 위치 + 적은 이름
+  assert.deepEqual([c.here, c.custom, c.name], [true, true, '보현산']);
+  assert.equal(b.place.here, undefined);   // 좌표를 적으면 고정
 });
 
 test('달 모양: 남반구에서는 좌우가 바뀐다', () => {
@@ -348,12 +350,13 @@ test('달 모양: 남반구에서는 좌우가 바뀐다', () => {
   assert.ok(cx(lit(lockCircle('달', north))) > 33 && cx(lit(lockCircle('달', south))) < 33);
 });
 
-test('배치: 제목 줄이 없고 내용이 판 위쪽부터 쓴다(관측지 이름·날짜는 위젯에 안 나온다)', () => {
+test('배치: 제목 줄이 없고 내용이 판 위쪽부터 쓴다(날짜는 안 나오고, 관측지 이름은 빈 자리에)', () => {
   const m = widgetModel(sky, { ...POHANG, name: '보현산천문대' }, fixture(), NOW);
   for (const kind of Object.keys(KINDS)) {
     const spec = layout(kind, m), [w, h] = SIZES[KINDS[kind]];
     assert.ok(!spec.ops.some(o => o.op === 'rect' && o.y === 0 && o.h < h), `${kind}: 머리띠`);
-    assert.ok(!texts(spec).some(t => t.includes('보현산') || /11\.16/.test(t)), `${kind}: ${texts(spec).join('|')}`);
+    assert.ok(!texts(spec).some(t => /11\.16/.test(t)), `${kind}: ${texts(spec).join('|')}`);
+    assert.equal(texts(spec).filter(t => t.startsWith('보현')).length, 1, `${kind}: 이름`);
     const ys = spec.ops.filter(o => o.op !== 'poly' && o.op !== 'line' && !(o.op === 'rect' && o.h >= h)).map(o => (o.op === 'circle' ? o.cy - o.r : o.y));
     // 5일은 막대가 32에서 시작하고 그 위는 점수 글자 자리
     assert.ok(Math.min(...ys) <= (kind === '5일' ? 32 : 18), `${kind}: 맨 위 ${Math.min(...ys)}`);
@@ -382,7 +385,7 @@ test('기상 위젯: 큰 것은 본판과 같은 9줄 × 12시간, 작은 것은
   const m = model({ cloud: 30 });
   const big = layout('기상', m), small = layout('날씨', m);
   const cells = spec => spec.ops.filter(o => o.op === 'text' && o.size === 9.5).map(o => o.text);
-  const hours = spec => spec.ops.filter(o => o.op === 'text' && o.size === 9).map(o => o.text);
+  const hours = spec => spec.ops.filter(o => o.op === 'text' && o.size === 9 && o.weight === 'm').map(o => o.text);
   assert.deepEqual(texts(big).filter(x => /^(상층|중층|하층|시상|제트|투명|이슬|기온|바람)$/.test(x)), ['상층', '중층', '하층', '시상', '제트', '투명', '이슬', '기온', '바람']);
   assert.deepEqual(hours(big), ['18', '19', '20', '21', '22', '23', '00', '01', '02', '03', '04', '05']);
   assert.equal(cells(big).length, 9 * 12);
@@ -537,4 +540,101 @@ test('받아오기: 저장본이 방금 것이어도 서버 판이 바뀌었으�
   r = await run({ '/l/astro-widget.cache.js': OLD, '/l/astro-widget.etag': '"v1"' }, () => ({ statusCode: 200, headers: {}, body: NEW }));
   assert.equal(r.ran, 'new');
   assert.equal('/l/astro-widget.etag' in r.files, false);
+});
+
+test('내 위치: 설정값을 비우거나 「현재」만 적으면 내 위치, 좌표를 적으면 고정', () => {
+  for (const t of [null, '', '현재', '달 | 내 위치', '여기']) {
+    const p = parseParam(t, 'small').place;
+    assert.equal(p.here, true, String(t)); assert.equal(p.custom, false, String(t)); assert.equal(p.name, '내 위치');
+  }
+  assert.equal(parseParam('달 | 내 위치', 'small').kind, '달');
+  assert.equal(parseParam('현재 | 36.17, 128.98', 'small').place.here, undefined);
+});
+
+test('내 위치: 0.01°로 반올림하고, 지명은 읍·면·동을 먼저', () => {
+  assert.deepEqual([roundHere(36.0194), roundHere(36.0151), roundHere(-33.8749)], [36.02, 36.02, -33.87]);
+  assert.equal(hereName({ subLocality: '대잠동', locality: '포항시 남구', administrativeArea: '경상북도' }), '대잠동');
+  assert.equal(hereName({ locality: '포항시 북구 청하면', administrativeArea: '경상북도' }), '청하면');
+  assert.equal(hereName({ locality: '포항시', administrativeArea: '경상북도' }), '포항시');
+  assert.equal(hereName({ locality: 'Sydney', administrativeArea: 'NSW' }), 'Sydney');
+  assert.equal(hereName({ name: 'Somewhere' }), 'Somewhere');
+  assert.equal(hereName(null), null);
+});
+
+// Scriptable 흉내: 파일은 Map, 위치는 지정한 값(또는 실패), 타이머는 setTimeout
+function fakeScriptable({ pos, geo, files = new Map() } = {}) {
+  const calls = { current: 0, geocode: 0 };
+  globalThis.FileManager = { local: () => ({
+    cacheDirectory: () => '/c', joinPath: (a, b) => a + '/' + b,
+    fileExists: p => files.has(p), readString: p => files.get(p), writeString: (p, v) => files.set(p, v),
+  }) };
+  globalThis.Timer = { schedule: (ms, rep, f) => setTimeout(f, Math.min(ms, 20)) };
+  globalThis.Location = {
+    setAccuracyToThreeKilometers() {},
+    current: async () => { calls.current++; if (!pos) throw new Error('권한 없음'); return pos; },
+    reverseGeocode: async () => { calls.geocode++; return geo ? [geo] : []; },
+  };
+  return { files, calls };
+}
+const { resolveHere } = await import('../widget/app.js');
+
+test('내 위치 읽기: 반올림한 좌표 + 동 이름, 10분 안에는 다시 묻지 않는다', async () => {
+  const f = fakeScriptable({ pos: { latitude: 36.0194, longitude: 129.3431 }, geo: { subLocality: '대잠동', locality: '포항시 남구' } });
+  const asked = parseParam('', 'small').place;
+  const a = await resolveHere(asked);
+  assert.deepEqual([a.lat, a.lon, a.name, a.here], [36.02, 129.34, '대잠동', true]);
+  const b = await resolveHere(asked);
+  assert.deepEqual([b.lat, b.name], [36.02, '대잠동']);
+  assert.deepEqual(f.calls, { current: 1, geocode: 1 });
+  assert.equal((await resolveHere(parseParam('집', 'small').place)).name, '집');   // 적은 이름이 먼저
+});
+
+test('내 위치 읽기: 위치를 못 읽으면 마지막 위치, 그것도 없으면 포항(화살표 없음)', async () => {
+  fakeScriptable({ pos: null });
+  const p = await resolveHere(parseParam('', 'small').place);
+  assert.deepEqual([p.name, p.lat, p.here], ['포항', 36.019, undefined]);
+  const old = new Map([['/c/astro-here.json', JSON.stringify({ at: Date.now() - 3600e3, lat: 36.2, lon: 129.34, name: '청하면' })]]);
+  fakeScriptable({ pos: null, files: old });
+  const q = await resolveHere(parseParam('', 'small').place);
+  assert.deepEqual([q.name, q.lat, q.here], ['청하면', 36.2, true]);
+});
+
+test('내 위치 읽기: 1시간 지난 저장본은 다시 묻고, 같은 자리면 지명은 묻지 않는다', async () => {
+  const old = new Map([['/c/astro-here.json', JSON.stringify({ at: Date.now() - 3600e3, lat: 36.02, lon: 129.34, name: '대잠동' })]]);
+  const f = fakeScriptable({ pos: { latitude: 36.021, longitude: 129.339 }, geo: { subLocality: '다른동' }, files: old });
+  const p = await resolveHere(parseParam('', 'small').place);
+  assert.equal(p.name, '대잠동');
+  assert.deepEqual(f.calls, { current: 1, geocode: 0 });
+});
+
+test('관측지 이름: 13종 모두 한 번, 다른 글자와 겹치지 않고 판 안에. 내 위치일 때만 화살표', () => {
+  const box = o => { const w = textWidth(o.text, o.size), x = o.align === 'l' ? o.x : o.align === 'r' ? o.x - w : o.x - w / 2; return [x, o.y, x + w, o.y + o.size * 1.2]; };
+  const hit = (a, b) => a[0] < b[2] - 0.5 && b[0] < a[2] - 0.5 && a[1] < b[3] - 0.5 && b[1] < a[3] - 0.5;
+  for (const name of ['보현산천문대 주차장', '대잠동']) {
+    for (const here of [true, false]) {
+      const m = widgetModel(sky, { ...POHANG, name, here }, fixture(), NOW);
+      for (const kind of Object.keys(KINDS)) {
+        const spec = layout(kind, m), ts = spec.ops.filter(o => o.op === 'text');
+        const mine = ts.filter(o => o.text.startsWith(name.slice(0, 2)));
+        assert.equal(mine.length, 1, `${kind} ${name}`);
+        const b = box(mine[0]);
+        assert.ok(b[0] >= 4 && b[2] <= spec.w - 4 && b[3] <= spec.h - 2, `${kind}: 판 밖 ${b.map(v => v.toFixed(1))}`);
+        for (const o of ts) if (o !== mine[0]) assert.ok(!hit(b, box(o)), `${kind}: 「${mine[0].text}」가 「${o.text}」와 겹친다`);
+        const arrows = spec.ops.filter(o => o.op === 'poly' && o.close && o.pts.length === 4 && Math.abs(o.pts[0][1] - mine[0].y - mine[0].size * 0.3) < 0.01);
+        assert.equal(arrows.length, here ? 1 : 0, `${kind}: 화살표`);
+      }
+    }
+  }
+});
+
+test('내 위치 읽기: 지명을 못 찾으면 「내 위치」로 보이되 저장하지 않고 다음에 다시 묻는다, 깨진 저장본은 버린다', async () => {
+  const f = fakeScriptable({ pos: { latitude: 36.02, longitude: 129.34 }, geo: null });
+  assert.equal((await resolveHere(parseParam('', 'small').place)).name, '내 위치');
+  const saved = JSON.parse(f.files.get('/c/astro-here.json'));
+  saved.at -= 3600e3; f.files.set('/c/astro-here.json', JSON.stringify(saved));
+  const g = fakeScriptable({ pos: { latitude: 36.02, longitude: 129.34 }, geo: { subLocality: '대잠동' }, files: f.files });
+  assert.equal((await resolveHere(parseParam('', 'small').place)).name, '대잠동');
+  assert.equal(g.calls.geocode, 1);
+  fakeScriptable({ pos: null, files: new Map([['/c/astro-here.json', '{"at":1}']]) });
+  assert.equal((await resolveHere(parseParam('', 'small').place)).name, '포항');
 });
