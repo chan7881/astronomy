@@ -33,6 +33,7 @@ header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-b
 header h1 { font-size: 24px; font-weight: 900; margin: 0; flex: 1; min-width: 0; letter-spacing: .02em; }
 header h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btn { min-width: 44px; min-height: 44px; padding: 0 10px; border: 1px solid var(--edge); border-radius: 9px; background: var(--card); color: var(--ink); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .btn[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .btn.red { color: var(--accent-red); border-color: var(--accent-red); }
 .btn.red[aria-pressed="true"] { background: var(--accent-red); color: #000; }
