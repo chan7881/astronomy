@@ -1,10 +1,10 @@
 // Scriptable에서 도는 부분: 자료 받기 · 그리기 명령을 DrawContext로 옮기기 · 위젯 내놓기.
 // 계산과 배치는 data.js·layout.js에 있고 여기서는 Scriptable API만 다룬다.
-/* global Astronomy, config, args, Script, Request, FileManager, ListWidget, DrawContext, Size, Rect, Point, Path, Color, Font, Timer, Location */
+/* global Astronomy, config, args, Script, Request, FileManager, ListWidget, DrawContext, Size, Rect, Point, Path, Color, Font, Timer, Location, Device */
 import { makeSky } from '../js/sky.js';
 import { forecastUrl, airUrl, normalize } from '../js/api.js';
 import { widgetModel } from './data.js';
-import { layout, lockText, lockCircle } from './layout.js';
+import { layout, lockText, lockCircle, widgetSize } from './layout.js';
 import { parseParam, roundHere, hereName } from './param.js';
 import { DEFAULT_PLACE } from '../js/places.js';
 
@@ -154,7 +154,10 @@ export async function run() {
   else {
     w = new ListWidget();
     w.setPadding(0, 0, 0, 0);
-    w.backgroundImage = paint(layout(kind, model, { glass }), true);
+    // 그림을 이 기기의 위젯 모양(iPad는 정사각형·더 넓은 직사각형)으로 그려 채울 때 가장자리가 잘리지 않게
+    let size = null;
+    try { size = typeof Device === 'undefined' ? null : widgetSize(family, Device.screenSize(), Device.isPad()); } catch (e) { size = null; }
+    w.backgroundImage = paint(layout(kind, model, { glass, size }), true);
   }
   w.url = SITE;
   // 위젯마다(크기·설정값) 다시 고칠 때를 0~5분 어긋나게 둔다 — 한꺼번에 깨어나는 일을 줄인다
@@ -163,6 +166,7 @@ export async function run() {
   if (config.runsInWidget) Script.setWidget(w);
   else if (family === 'small') await w.presentSmall();
   else if (family === 'medium') await w.presentMedium();
+  else if (family === 'extraLarge' && w.presentExtraLarge) await w.presentExtraLarge();
   else await w.presentLarge();
   Script.complete();
 }

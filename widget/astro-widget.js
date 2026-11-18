@@ -1087,29 +1087,66 @@ const { clock, cloudLine } = __m["js/view.js"];
 const { hourTicks, DASH, CLOUD_INK_FLIP } = __m["js/charts.js"];
 const { GRADE_KO, gradeSeeing, gradeJet, gradeDew, gradeAod } = __m["js/model.js"];
 
-const SIZES = { small: [158, 158], medium: [338, 158], large: [338, 354] };
+// 그리는 판의 크기(pt). 아주 큰(extraLarge)은 iPad에만 있다
+const SIZES = { small: [158, 158], medium: [338, 158], large: [338, 354], extraLarge: [715, 342] };
 const KINDS = {
   점수: 'small', 달: 'small', 대기: 'small', 지금: 'small', 날씨: 'small',
   판정: 'medium', 고도: 'medium', '5일': 'medium', 시간별: 'medium',
   종합: 'large', 천체: 'large', 예보: 'large', 기상: 'large',
+  전체: 'extraLarge',
 };
-const DEFAULT_KIND = { small: '점수', medium: '판정', large: '종합' };
+const DEFAULT_KIND = { small: '점수', medium: '판정', large: '종합', extraLarge: '전체' };
+
+// 기기별 실제 위젯 크기(pt, Apple HIG 「Widgets」 표 — iPad는 Canvas 값). [세로 화면 너비, 높이, [작은, 중간, 큰, 아주 큰]]
+const SZ = (s, mw, lh) => [[s, s], [mw, s], [mw, lh], null];
+const PHONE = [
+  [430, 932, SZ(170, 364, 382)], [428, 926, SZ(170, 364, 382)], [414, 896, SZ(169, 360, 379)],
+  [414, 736, [[159, 159], [348, 157], [348, 357], null]], [393, 852, SZ(158, 338, 354)], [390, 844, SZ(158, 338, 354)],
+  [375, 812, SZ(155, 329, 345)], [375, 667, SZ(148, 321, 324)], [360, 780, SZ(155, 329, 345)], [320, 568, SZ(141, 292, 311)],
+];
+const TAB = (s, m, x) => [[s, s], [m, s], [m, m], [x, m]];
+const TABLET = [
+  [768, 1024, TAB(141, 305.5, 634.5)], [744, 1133, TAB(141, 305.5, 634.5)], [810, 1080, TAB(146, 320.5, 669)],
+  [820, 1180, TAB(155, 342, 715.5)], [834, 1112, TAB(150, 327.5, 682)], [834, 1194, TAB(155, 342, 715.5)],
+  [954, 1373, TAB(162, 350, 726)], [970, 1389, TAB(162, 350, 726)],
+];
+const FAMILY_I = { small: 0, medium: 1, large: 2, extraLarge: 3 };
+/**
+ * 이 기기에서 family 위젯의 실제 크기 [w, h](pt). screen: 화면 크기 {width, height}(가로 화면이어도 된다), pad: iPad인지.
+ * 표에 없는 화면은 가장 가까운 것. 잠금 화면 위젯·그 기기에 없는 크기는 null
+ */
+function widgetSize(family, screen, pad) {
+  const i = FAMILY_I[family];
+  if (i == null || !screen || !(screen.width > 0 && screen.height > 0)) return null;
+  const sw = Math.min(screen.width, screen.height), sh = Math.max(screen.width, screen.height);
+  let best = null, d = Infinity;
+  for (const [w, h, sizes] of pad ? TABLET : PHONE) { const e = Math.abs(w - sw) + Math.abs(h - sh); if (e < d) { d = e; best = sizes; } }
+  return best[i];
+}
 
 const PAD = 14;
 const fin = Number.isFinite;
 
 // ── 그리기 명령 모으개 ─────────────────────────────────
-function canvas(w, h) {
-  const ops = [];
+// ox, oy: 모든 좌표에 더할 값(판이 실제 위젯 모양에 맞춰 넓어졌을 때 내용을 가운데로)
+function canvas(w, h, ox = 0, oy = 0, ops = []) {
   return {
     w, h, ops,
-    rect: (x, y, w, h, o = {}) => ops.push({ op: 'rect', x, y, w, h, r: 0, ...o }),
-    line: (x1, y1, x2, y2, color = T.line, sw = 1) => ops.push({ op: 'line', x1, y1, x2, y2, color, sw }),
-    poly: (pts, o = {}) => pts.length > 1 && ops.push({ op: 'poly', pts, ...o }),
-    circle: (cx, cy, r, o = {}) => ops.push({ op: 'circle', cx, cy, r, ...o }),
-    text: (text, x, y, o = {}) => ops.push(fitText({ op: 'text', text: String(text), x, y, size: 12, weight: 'm', color: T.ink, align: 'l', ...o })),
+    rect: (x, y, w, h, o = {}) => ops.push({ op: 'rect', x: x + ox, y: y + oy, w, h, r: 0, ...o }),
+    line: (x1, y1, x2, y2, color = T.line, sw = 1) => ops.push({ op: 'line', x1: x1 + ox, y1: y1 + oy, x2: x2 + ox, y2: y2 + oy, color, sw }),
+    poly: (pts, o = {}) => pts.length > 1 && ops.push({ op: 'poly', pts: pts.map(([x, y]) => [x + ox, y + oy]), ...o }),
+    circle: (cx, cy, r, o = {}) => ops.push({ op: 'circle', cx: cx + ox, cy: cy + oy, r, ...o }),
+    text: (text, x, y, o = {}) => ops.push(fitText({ op: 'text', text: String(text), x: x + ox, y: y + oy, size: 12, weight: 'm', color: T.ink, align: 'l', ...o })),
   };
 }
+
+/** 판 [w, h]를 실제 위젯 모양(target)에 맞게 한쪽만 늘린다. 반환 [판 너비, 판 높이, 내용을 옮길 x, y] */
+function fitBoard([w, h], target) {
+  if (!target || !(target[0] > 0 && target[1] > 0)) return [w, h, 0, 0];
+  const a = target[0] / target[1];
+  return a > w / h ? [h * a, h, (h * a - w) / 2, 0] : [w, w / a, 0, (w / a - h) / 2];
+}
+let TARGET = null;   // layout()이 그리는 동안의 실제 위젯 크기
 
 /** 글자 너비 어림(pt). 한글 1em, 숫자·영문 0.6em */
 function textWidth(s, size) {
@@ -1160,11 +1197,12 @@ function sheen(c, w, h) {
 }
 
 // 바탕만. 제목 줄(머리띠)은 두지 않는다(2026-11-16) — 내용이 판 전체를 쓴다
+// 판이 실제 위젯 모양에 맞춰 넓어지면 바탕은 판 전체에, 내용은 가운데에
 function frame(kind) {
-  const [w, h] = SIZES[KINDS[kind]];
+  const [w, h, ox, oy] = fitBoard(SIZES[KINDS[kind]], TARGET);
   const c = canvas(w, h);
   if (T.glass) sheen(c, w, h); else c.rect(0, 0, w, h, { fill: T.card });
-  return c;
+  return canvas(w, h, ox, oy, c.ops);
 }
 
 /** 이름표 행들: [[이름, 값 | 그리는 함수(x, y)]] */
@@ -1269,6 +1307,8 @@ const BAND_ROWS = [
   ['제트', h => h.jet, gradeJet, v => Math.round(v), false, 'max'],
   ['이슬', h => h.spread, gradeDew, v => v.toFixed(1), false, 'min'],
 ];
+// 아주 큰 위젯의 띠: 투명도를 더한다
+const WIDE_ROWS = [...BAND_ROWS.slice(0, 3), ['투명', h => h.aod, gradeAod, v => v.toFixed(2).replace(/^0/, ''), false, 'max'], BAND_ROWS[3]];
 /** 여러 시간의 값을 한 칸으로: 구름은 평균, 등급이 있는 것은 나쁜 쪽(시상·제트는 큰 값, 이슬점 차는 작은 값). 값이 없으면 NaN */
 function blockValue(values, how) {
   const xs = values.filter(fin);
@@ -1359,7 +1399,26 @@ function placeName(c, m, x, y, { size = 10.5, align = 'l', color = T.ink3, maxW 
   return w;
 }
 
-// ── 위젯 13종 ──────────────────────────────────────────
+// 5밤 표(큰 「예보」의 칸). x: 왼쪽, w: 너비, y: 머리줄, rh: 줄 높이
+function nightsTable(c, m, x, y, w, rh, { name = true, scoreSize = 17 } = {}) {
+  const R = x + w, at = d => x + d * w / 310;   // 큰 「예보」(너비 310)의 칸 자리를 너비에 맞게
+  const cols = [[x, 'l', '밤'], [at(98), 'r', '점수'], [at(150), 'r', '구름'], [at(194), 'r', '시상'], [at(238), 'r', '달'], [R, 'r', '최적']];
+  cols.forEach(([cx, align, nm]) => c.text(nm, cx, y, { size: 10.5, weight: 'b', color: T.ink3, align }));
+  if (name) placeName(c, m, x + textWidth('밤', 10.5) + 8, y, { size: 10.5, maxW: at(98) - 26 - x - textWidth('밤', 10.5) - 12 });
+  m.nights.forEach((v, i) => {
+    const s = v.summary, ry = y + 18 + i * rh, ty = ry + (rh - 12 * 1.2) / 2;
+    c.line(x, ry, R, ry);
+    c.text(`${v.day} ${v.wd}`, x, ty, { weight: 'h' });
+    c.text(s ? Math.round(s.score) : '–', at(86), ry + (rh - scoreSize * 1.2) / 2, { size: scoreSize, weight: 'h', align: 'r' });
+    if (s) mark(c, s.grade, at(94), ry + rh / 2, 4);
+    c.text(pct(s && s.cloudAvg), at(150), ty, { align: 'r' });
+    c.text(s && fin(s.seeingAvg) ? `${s.seeingAvg.toFixed(1)}″` : '–', at(194), ty, { align: 'r' });
+    c.text(`${Math.round(v.moon.frac * 100)}%`, at(238), ty, { align: 'r' });
+    c.text(s && s.window ? winShort(m, v) : '—', R, ty, { align: 'r' });
+  });
+}
+
+// ── 위젯 14종 ──────────────────────────────────────────
 const LAYOUTS = {
   점수(m) {
     const v = m.nights[0], s = v.summary, c = frame('점수');
@@ -1499,33 +1558,38 @@ const LAYOUTS = {
   },
   예보(m) {
     const c = frame('예보');
-    const cols = [[PAD, 'l', '밤'], [112, 'r', '점수'], [164, 'r', '구름'], [208, 'r', '시상'], [252, 'r', '달'], [324, 'r', '최적']];
-    cols.forEach(([x, align, name]) => c.text(name, x, 14, { size: 10.5, weight: 'b', color: T.ink3, align }));
-    placeName(c, m, PAD + textWidth('밤', 10.5) + 8, 14, { size: 10.5, maxW: 112 - 26 - PAD - textWidth('밤', 10.5) - 12 });
-    const rh = (354 - 32 - 8) / 5;
-    m.nights.forEach((v, i) => {
-      const s = v.summary, y = 32 + i * rh, ty = y + (rh - 12 * 1.2) / 2;
-      c.line(PAD, y, 324, y);
-      c.text(`${v.day} ${v.wd}`, PAD, ty, { weight: 'h' });
-      c.text(s ? Math.round(s.score) : '–', 100, y + (rh - 17 * 1.2) / 2, { size: 17, weight: 'h', align: 'r' });
-      if (s) mark(c, s.grade, 108, y + rh / 2, 4);
-      c.text(pct(s && s.cloudAvg), 164, ty, { align: 'r' });
-      c.text(s && fin(s.seeingAvg) ? `${s.seeingAvg.toFixed(1)}″` : '–', 208, ty, { align: 'r' });
-      c.text(`${Math.round(v.moon.frac * 100)}%`, 252, ty, { align: 'r' });
-      c.text(s && s.window ? winShort(m, v) : '—', 324, ty, { align: 'r' });
-    });
+    nightsTable(c, m, PAD, 14, 310, (354 - 32 - 8) / 5);
+    return c;
+  },
+  전체(m) {
+    // 왼쪽: 판정(점수 + 4줄) · 고도 곡선 / 오른쪽: 5밤 표 · 기상 띠
+    const v = m.nights[0], s = v.summary, { hh } = clock(m.offMs), c = frame('전체'), MID = 357.5, RX = 370, RR = 715 - PAD;
+    scoreBox(c, s, PAD, 14, 84, 100, 38, true);
+    rows(c, [
+      ['최적', winLong(m, v)],
+      ['달', `${v.moon.name} · ${v.moonEvent}`],
+      ['구름', s ? `평균 ${pct(s.cloudAvg)}${s.cloudNote.kind === 'avg' ? '' : ' · ' + cloudLine(s.cloudNote, hh)}` : '–'],
+      ['주의', cautionRow(c, s)],
+    ], 112, 14, MID - 12 - 112, { rh: 25 });
+    altChart(c, m, v, 8, 126, MID - 16, 206);
+    c.line(MID, 14, MID, 328, T.line);
+    nightsTable(c, m, RX, 14, RR - RX, 24, { name: false, scoreSize: 15 });
+    bandChart(c, m, v, RX - 8, 160, RR - RX + 12, 172, WIDE_ROWS);
     return c;
   },
 };
 
-/** kind의 위젯을 그리기 명령으로. glass: 유리풍. 반환 {w, h, ops} */
-function layout(kind, model, { glass = false } = {}) {
+/**
+ * kind의 위젯을 그리기 명령으로. glass: 유리풍. size: 이 기기의 실제 위젯 크기 [w, h](widgetSize) —
+ * 주면 판을 그 모양으로 넓히고 내용은 가운데에 둔다(그림이 위젯에 채워질 때 가장자리가 잘리지 않게). 반환 {w, h, ops}
+ */
+function layout(kind, model, { glass = false, size = null } = {}) {
   let c;
-  setTheme(glass);
+  setTheme(glass); TARGET = size;
   try {
     c = LAYOUTS[kind](model);
-    if (glass) c.rect(0.5, 0.5, c.w - 1, c.h - 1, { stroke: RIM, r: CORNER });
-  } finally { setTheme(false); }
+    if (glass) c.ops.push({ op: 'rect', x: 0.5, y: 0.5, w: c.w - 1, h: c.h - 1, r: CORNER, stroke: RIM });
+  } finally { setTheme(false); TARGET = null; }
   return { w: c.w, h: c.h, ops: c.ops };
 }
 
@@ -1564,7 +1628,7 @@ function lockCircle(kind, m) {
   return { w: c.w, h: c.h, ops: c.ops };
 }
 
-return { textWidth, fitText, moonShape, dashes, blockValue, layout, lockText, lockCircle, SIZES, KINDS, DEFAULT_KIND, ALT_RULE };
+return { widgetSize, fitBoard, textWidth, fitText, moonShape, dashes, blockValue, layout, lockText, lockCircle, SIZES, KINDS, DEFAULT_KIND, ALT_RULE };
 })();
 // ── js/places.js
 __m["js/places.js"] = (() => {
@@ -1638,7 +1702,7 @@ const { DEFAULT_PLACE, parseCoords } = __m["js/places.js"];
 const { KINDS, DEFAULT_KIND } = __m["widget/layout.js"];
 
 // 기상만 보여 주는 위젯은 크기마다 이름이 다르다 — 어느 이름을 적어도 그 크기의 것으로
-const WEATHER = { small: '날씨', medium: '시간별', large: '기상' };
+const WEATHER = { small: '날씨', medium: '시간별', large: '기상', extraLarge: '기상' };
 const HERE = ['현재', '내위치', '위치', '여기'];
 const ALIAS = { 띠: '시간별', 곡선: '고도', 밤하늘: '고도', 출몰: '천체', 행성: '지금', 시상: '대기', '5일밤': '5일' };
 
@@ -1647,7 +1711,8 @@ const ALIAS = { 띠: '시간별', 곡선: '고도', 밤하늘: '고도', 출몰:
  * 반환 {kind, place, glass}. 종류가 없거나 그 크기에 맞지 않으면 그 크기의 기본 위젯. 「유리」가 있으면 glass.
  */
 function parseParam(text, family) {
-  const size = family === 'extraLarge' ? 'large' : family;
+  // 아주 큰(iPad)은 제 것(전체) 말고 큰 위젯도 받는다 — 판을 가운데 두고 양옆은 바탕
+  const size = family, fits = k => KINDS[k] === size || (size === 'extraLarge' && KINDS[k] === 'large');
   let kind = null, coords = null, name = null, glass = false;
   const toks = String(text ?? '').split(/[|;,\n]/).map(t => t.trim()).filter(Boolean);
   for (let i = 0; i < toks.length; i++) {
@@ -1662,7 +1727,7 @@ function parseParam(text, family) {
     else if (parseCoords(tok)) coords = coords || parseCoords(tok);
     else name = name || tok;
   }
-  if (DEFAULT_KIND[size] && (!kind || KINDS[kind] !== size)) kind = DEFAULT_KIND[size];
+  if (DEFAULT_KIND[size] && (!kind || !fits(kind))) kind = DEFAULT_KIND[size];
   const place = coords ? { name: name || '관측지', lat: coords.lat, lon: coords.lon, elev: 0 }
     : { name: name || '내 위치', lat: DEFAULT_PLACE.lat, lon: DEFAULT_PLACE.lon, elev: 0, here: true, custom: !!name };   // 좌표는 app.js가 바꾼다
   return { kind, place, glass };
@@ -1685,11 +1750,11 @@ return { parseParam, hereName, roundHere };
 __m["widget/app.js"] = (() => {
 // Scriptable에서 도는 부분: 자료 받기 · 그리기 명령을 DrawContext로 옮기기 · 위젯 내놓기.
 // 계산과 배치는 data.js·layout.js에 있고 여기서는 Scriptable API만 다룬다.
-/* global Astronomy, config, args, Script, Request, FileManager, ListWidget, DrawContext, Size, Rect, Point, Path, Color, Font, Timer, Location */
+/* global Astronomy, config, args, Script, Request, FileManager, ListWidget, DrawContext, Size, Rect, Point, Path, Color, Font, Timer, Location, Device */
 const { makeSky } = __m["js/sky.js"];
 const { forecastUrl, airUrl, normalize } = __m["js/api.js"];
 const { widgetModel } = __m["widget/data.js"];
-const { layout, lockText, lockCircle } = __m["widget/layout.js"];
+const { layout, lockText, lockCircle, widgetSize } = __m["widget/layout.js"];
 const { parseParam, roundHere, hereName } = __m["widget/param.js"];
 const { DEFAULT_PLACE } = __m["js/places.js"];
 
@@ -1839,7 +1904,10 @@ async function run() {
   else {
     w = new ListWidget();
     w.setPadding(0, 0, 0, 0);
-    w.backgroundImage = paint(layout(kind, model, { glass }), true);
+    // 그림을 이 기기의 위젯 모양(iPad는 정사각형·더 넓은 직사각형)으로 그려 채울 때 가장자리가 잘리지 않게
+    let size = null;
+    try { size = typeof Device === 'undefined' ? null : widgetSize(family, Device.screenSize(), Device.isPad()); } catch (e) { size = null; }
+    w.backgroundImage = paint(layout(kind, model, { glass, size }), true);
   }
   w.url = SITE;
   // 위젯마다(크기·설정값) 다시 고칠 때를 0~5분 어긋나게 둔다 — 한꺼번에 깨어나는 일을 줄인다
@@ -1848,6 +1916,7 @@ async function run() {
   if (config.runsInWidget) Script.setWidget(w);
   else if (family === 'small') await w.presentSmall();
   else if (family === 'medium') await w.presentMedium();
+  else if (family === 'extraLarge' && w.presentExtraLarge) await w.presentExtraLarge();
   else await w.presentLarge();
   Script.complete();
 }

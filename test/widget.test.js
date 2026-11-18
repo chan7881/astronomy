@@ -6,7 +6,7 @@ import { makeSky } from '../js/sky.js';
 import { normalize, LEVELS } from '../js/api.js';
 import { baseNoon, nightView } from '../js/view.js';
 import { widgetModel, highestBody, bandHours } from '../widget/data.js';
-import { layout, lockText, lockCircle, moonShape, dashes, textWidth, fitText, blockValue, KINDS, SIZES, ALT_RULE } from '../widget/layout.js';
+import { layout, lockText, lockCircle, moonShape, dashes, textWidth, fitText, blockValue, KINDS, SIZES, ALT_RULE, widgetSize, fitBoard } from '../widget/layout.js';
 import { parseParam, roundHere, hereName } from '../widget/param.js';
 import { toSvg } from '../widget/svg.js';
 import { T } from '../widget/theme.js';
@@ -131,8 +131,8 @@ test('설정값: 종류·좌표·이름을 아무 순서로, 크기에 맞지 �
   assert.equal(parseParam('', 'accessoryCircular').kind, null);
 });
 
-test('배치: 13종 모두 크기에 맞고, 좌표가 유한하고, 글자가 판 밖으로 나가지 않는다', () => {
-  assert.equal(Object.keys(KINDS).length, 13);
+test('배치: 14종 모두 크기에 맞고, 좌표가 유한하고, 글자가 판 밖으로 나가지 않는다', () => {
+  assert.equal(Object.keys(KINDS).length, 14);
   for (const opt of [{}, { cloud: 95, dew: 9.5 }, { glass: true }]) {
     const m = model(opt);
     for (const kind of Object.keys(KINDS)) {
@@ -152,7 +152,7 @@ test('배치: 13종 모두 크기에 맞고, 좌표가 유한하고, 글자가 �
   }
 });
 
-test('배치: 자료가 없어도(예보 실패) 13종이 그려진다', () => {
+test('배치: 자료가 없어도(예보 실패) 14종이 그려진다', () => {
   const m = widgetModel(sky, POHANG, null, NOW);
   assert.equal(m.nights[0].summary, null);
   for (const kind of Object.keys(KINDS)) assert.ok(layout(kind, m).ops.length > 1, kind);   // 바탕 + 내용
@@ -245,7 +245,7 @@ test('묶음: 가짜 Scriptable에서 모든 크기·종류가 오류 없이 위
     class DrawContext { constructor() { this.n = 0; this.texts = []; }
       setFont() {} setTextColor() {} setFillColor() {} setStrokeColor() {} setLineWidth() {} addPath() {} fillPath() { this.n++; } strokePath() { this.n++; }
       setTextAlignedLeft() {} setTextAlignedCenter() {} setTextAlignedRight() {}
-      drawTextInRect(t) { assert.equal(typeof t, 'string'); this.texts.push(t); } getImage() { return { image: true, n: this.n, texts: this.texts }; } }
+      drawTextInRect(t) { assert.equal(typeof t, 'string'); this.texts.push(t); } getImage() { return { image: true, n: this.n, texts: this.texts, size: this.size && this.size.a }; } }
     class ListWidget { constructor() { this.texts = []; }
       setPadding() {} addText(t) { this.texts.push(t); return {}; } addImage(i) { this.image = i; return { centerAlignImage() {} }; }
       async presentSmall() {} async presentMedium() {} async presentLarge() {} }
@@ -258,6 +258,7 @@ test('묶음: 가짜 Scriptable에서 모든 크기·종류가 오류 없이 위
         async loadString() { this.response = { statusCode: 200 }; return code; } },
       FileManager: { local: () => ({ cacheDirectory: () => '/c', libraryDirectory: () => '/l', modificationDate: () => new Date(), joinPath: (a, b) => a + '/' + b, fileExists: p => p in log.files, readString: p => log.files[p], writeString: (p, s) => { log.files[p] = s; }, remove: p => { delete log.files[p]; } }) },
       Timer: { schedule: (ms, rep, f) => { log.waits++; if (onWait) onWait(log.files); setImmediate(f); } },
+      ...(family === 'extraLarge' ? { Device: { screenSize: () => ({ width: 1180, height: 820 }), isPad: () => true } } : {}),
       ListWidget, DrawContext, Path, Size: rec('Size'), Rect: rec('Rect'), Point: rec('Point'),
       Color: class { constructor(hex, a) { assert.match(hex, /^#[0-9a-f]{6}$/, 'Scriptable의 Color는 #rrggbb만 받는다'); assert.ok(a >= 0 && a <= 1, `알파 ${a}`); } },
       Font: { mediumSystemFont: font, boldSystemFont: font, heavySystemFont: font, systemFont: font },
@@ -276,6 +277,10 @@ test('묶음: 가짜 Scriptable에서 모든 크기·종류가 오류 없이 위
     return log;
   };
   for (const [family, param] of cases) await runCase(family, param, code);
+  // iPad(가로 화면)의 아주 큰 위젯: 그림이 그 기기의 위젯 모양(715.5×342)이고 「전체」가 나온다
+  const xl = (await runCase('extraLarge', null, code)).widget.backgroundImage;
+  assert.ok(Math.abs(xl.size[0] / xl.size[1] - 715.5 / 342) < 1e-9, String(xl.size));
+  assert.ok(xl.texts.includes('투명') && xl.texts.includes('최적'), xl.texts.join('|'));
   // 폰에 붙여 넣는 받아오기 스크립트로도 같은 위젯이 나오고, 받은 묶음을 저장해 둔다
   const viaLoader = await runCase('medium', '5일', readFileSync(new URL('../widget/loader.js', import.meta.url), 'utf8'));
   assert.equal(viaLoader.requests[0], 'https://chan7881.github.io/astronomy/widget/astro-widget.js');
@@ -696,4 +701,51 @@ test('유동 글자 크기: 주의 칸은 0.6배로도 안 들어가면 항목�
   assert.equal(Number(t.text.slice(-1)), many.length - kept.length);
   const sq = ink.find(o => o.op === 'rect' && o.fill === T.b && o.w < 12 * 0.36 * 1.8 - 0.01);
   assert.ok(sq, '나쁨 네모도 글귀와 같이 작아진다');
+});
+
+test('기기 크기: Apple 표의 위젯 크기를 화면 크기로 찾는다(가로 화면도, 표에 없는 화면은 가장 가까운 것)', () => {
+  const air = { width: 820, height: 1180 }, airL = { width: 1180, height: 820 };
+  assert.deepEqual(['small', 'medium', 'large', 'extraLarge'].map(f => widgetSize(f, air, true)), [[155, 155], [342, 155], [342, 342], [715.5, 342]]);
+  assert.deepEqual(widgetSize('extraLarge', airL, true), [715.5, 342]);
+  assert.deepEqual(widgetSize('extraLarge', { width: 1024, height: 768 }, true), [634.5, 305.5]);
+  assert.deepEqual(widgetSize('large', { width: 390, height: 844 }, false), [338, 354]);
+  assert.deepEqual(widgetSize('medium', { width: 402, height: 874 }, false), [338, 158]);   // 표에 없음 → 393×852
+  assert.deepEqual(widgetSize('large', { width: 932, height: 430 }, false), [364, 382]);
+  assert.equal(widgetSize('extraLarge', { width: 390, height: 844 }, false), null);   // 아이폰에는 없다
+  assert.equal(widgetSize('accessoryCircular', air, true), null);
+  assert.equal(widgetSize('large', null, true), null);
+});
+
+test('기기 크기: 판을 위젯 모양으로 한쪽만 넓히고, 바탕은 판 전체 · 내용은 그대로 가운데로 옮긴다', () => {
+  assert.deepEqual(fitBoard([338, 354], [342, 342]), [354, 354, 8, 0]);
+  assert.deepEqual(fitBoard([338, 158], [100, 100]), [338, 338, 0, 90]);
+  assert.deepEqual(fitBoard([338, 158], null), [338, 158, 0, 0]);
+  const m = model(), mv = o => (o.op === 'poly' ? { ...o, pts: o.pts.map(([x, y]) => [x + dx, y + dy]) } : o.op === 'line' ? { ...o, x1: o.x1 + dx, y1: o.y1 + dy, x2: o.x2 + dx, y2: o.y2 + dy }
+    : o.op === 'circle' ? { ...o, cx: o.cx + dx, cy: o.cy + dy } : { ...o, x: o.x + dx, y: o.y + dy });
+  let dx = 0, dy = 0;
+  for (const scr of [{ width: 820, height: 1180 }, { width: 1024, height: 768 }, { width: 390, height: 844 }]) {
+    for (const kind of Object.keys(KINDS)) {
+      const fam = KINDS[kind], pad = scr.width !== 390, size = widgetSize(fam, scr, pad);
+      if (!size) continue;
+      const a = layout(kind, m), b = layout(kind, m, { size }), [w, h] = SIZES[fam];
+      assert.ok(Math.abs(b.w / b.h - size[0] / size[1]) < 1e-9, `${kind}: ${b.w}×${b.h} / ${size}`);
+      assert.ok((b.w === w && b.h >= h) || (b.h === h && b.w >= w), `${kind}: 한쪽만`);
+      dx = (b.w - w) / 2; dy = (b.h - h) / 2;
+      assert.deepEqual(b.ops[0], { op: 'rect', x: 0, y: 0, w: b.w, h: b.h, r: 0, fill: T.card }, `${kind}: 바탕`);
+      assert.deepEqual(b.ops.slice(1), a.ops.slice(1).map(mv), `${kind}: 내용`);
+    }
+  }
+  const g = layout('전체', m, { glass: true, size: [634.5, 305.5] });
+  assert.deepEqual(g.ops.at(-1), { op: 'rect', x: 0.5, y: 0.5, w: g.w - 1, h: g.h - 1, r: 22, stroke: '#ffffff24' }, '유리 테두리는 판 전체');
+});
+
+test('아주 큰(iPad): 기본은 「전체」, 큰 위젯도 받는다, 「전체」는 다른 크기에 안 나온다', () => {
+  assert.equal(parseParam('', 'extraLarge').kind, '전체');
+  assert.equal(parseParam('점수', 'extraLarge').kind, '전체');
+  assert.equal(parseParam('종합 | 유리', 'extraLarge').kind, '종합');
+  assert.equal(parseParam('전체', 'large').kind, '종합');
+  assert.equal(parseParam('전체', 'medium').kind, '판정');
+  const t = texts(layout('전체', model()));
+  for (const k of ['최적', '달', '구름', '주의', '점수', '시상', '제트', '투명', '이슬', '토성']) assert.ok(t.includes(k), `${k}: ${t.join('|')}`);
+  assert.equal(t.filter(x => /^\d+ [월화수목금토일]$/.test(x)).length, 5, '5밤');
 });
