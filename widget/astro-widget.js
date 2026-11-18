@@ -635,9 +635,14 @@ const SURFACE = ['temperature_2m', 'dew_point_2m', 'relative_humidity_2m', 'clou
 const LEVEL_VARS = ['temperature', 'geopotential_height', 'wind_speed', 'wind_direction'];
 const TTL = 10 * 60e3;   // 화면의 15분 새로 고침보다 짧게
 
-function forecastUrl(lat, lon) {
+// 예보 서버. 앞의 것이 멈추면 뒤의 것으로 받는다 — 2026-11 api.open-meteo.com의 한 서버(51.81.167.44, 한국이 이리로 간다)가
+// 새 연결을 받지 않아 「예보를 불러오지 못했습니다」가 잦았다(open-meteo GitHub 11-13 보고). previous-runs-api는 다른 서버이고
+// 이 주소(/v1/forecast)에 같은 변수·같은 최신 예보를 돌려준다(11-18 확인: 7일 168시각, 61변수 모두 값).
+const FORECAST_HOSTS = ['api.open-meteo.com', 'previous-runs-api.open-meteo.com'];
+
+function forecastUrl(lat, lon, host = FORECAST_HOSTS[0]) {
   const hourly = [...SURFACE, ...LEVELS.flatMap(p => LEVEL_VARS.map(v => `${v}_${p}hPa`))];
-  return 'https://api.open-meteo.com/v1/forecast?' + new URLSearchParams({
+  return `https://${host}/v1/forecast?` + new URLSearchParams({
     latitude: lat.toFixed(3), longitude: lon.toFixed(3), timezone: 'auto', past_days: 1, forecast_days: 6,
     wind_speed_unit: 'ms', hourly: hourly.join(','),
   });
@@ -687,8 +692,44 @@ async function getJson(url, ms) {
   return r.json();
 }
 
-// 서버가 답 없이 멈추면(2026-11-17 api.open-meteo.com 장애) 화면이 「불러오는 중」에 머문다 — 시간 제한을 둔다
-const FETCH_MS = 20e3, AIR_MS = 10e3;
+// 서버가 답 없이 멈추면(2026-11-17 api.open-meteo.com 장애) 화면이 「불러오는 중」에 머문다 — 시간 제한을 둔다.
+// 서버마다 FETCH_MS씩 기다리고 다음 서버로 넘어간다(정상 응답은 2초 안팎).
+const FETCH_MS = 10e3, AIR_MS = 10e3;
+// 첫 서버가 멈춰 다른 서버에서 받았으면 한동안 그 서버부터 묻는다(앱을 열 때마다 멈춘 서버를 10초씩 기다리지 않게).
+// 넘어간 지 HOST_KEEP이 지나면 첫 서버가 돌아왔는지 다시 본다.
+const HOST_KEY = 'fc-host', HOST_KEEP = 3600e3;
+
+/** 물을 서버 순서(FORECAST_HOSTS의 번호). saved = {i, at}: 첫 서버가 실패해 i번 서버로 넘어간 때 */
+function hostOrder(saved, now = Date.now()) {
+  const n = FORECAST_HOSTS.length;
+  const i = saved && Number.isInteger(saved.i) && saved.i > 0 && saved.i < n && now - saved.at >= 0 && now - saved.at < HOST_KEEP ? saved.i : 0;
+  return FORECAST_HOSTS.map((_, k) => (i + k) % n);
+}
+
+/**
+ * 서버를 hostOrder 순서로 물어(fetchOne(host)) 처음 받은 예보 {fc, i, saved}를 돌려준다. saved는 다음에 기억할 값
+ * (첫 서버가 실패하고 다른 서버에서 받았으면 새 {i, at}, 첫 서버에서 받았으면 null, 그 밖에는 그대로).
+ * 모두 실패하면 첫 서버의 오류를 던진다(오류 문구가 묻는 순서에 따라 바뀌지 않게). 본판과 위젯이 함께 쓴다.
+ */
+async function fetchFromHosts(fetchOne, saved, now = Date.now()) {
+  const errs = [];
+  for (const i of hostOrder(saved, now)) {
+    try {
+      const fc = await fetchOne(FORECAST_HOSTS[i]);
+      if (!fc || !fc.hourly || !Array.isArray(fc.hourly.time)) throw new Error('예보 응답이 비었다');
+      return { fc, i, saved: i === 0 ? null : errs[0] ? { i, at: now } : saved };
+    } catch (e) { errs[i] = e; }
+  }
+  throw errs[0];
+}
+
+async function getForecast(lat, lon) {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(HOST_KEY)); } catch { /* 없음 */ }
+  const r = await fetchFromHosts(host => getJson(forecastUrl(lat, lon, host), FETCH_MS), saved);
+  try { if (r.saved !== saved) localStorage.setItem(HOST_KEY, JSON.stringify(r.saved)); } catch { /* 저장 불가 환경 */ }
+  return r.fc;
+}
 // 마지막으로 받은 예보(한 곳)를 남겨 두고, 받기에 실패하면 이만큼 지난 것까지 대신 보인다
 const LAST_KEY = 'fc-last', LAST_OK = 24 * 3600e3;
 const coordKey = (lat, lon) => `${lat.toFixed(3)},${lon.toFixed(3)}`;
@@ -700,7 +741,7 @@ async function loadForecast(lat, lon) {
     const c = JSON.parse(sessionStorage.getItem(key));
     if (c && Date.now() - c.at < TTL) return c.data;
   } catch { /* 캐시 없음 */ }
-  const [fc, air] = await Promise.all([getJson(forecastUrl(lat, lon), FETCH_MS), getJson(airUrl(lat, lon), AIR_MS).catch(() => null)]);
+  const [fc, air] = await Promise.all([getForecast(lat, lon), getJson(airUrl(lat, lon), AIR_MS).catch(() => null)]);
   const data = normalize(fc, air), at = Date.now();
   const json = JSON.stringify(data);
   try { sessionStorage.setItem(key, `{"at":${at},"data":${json}}`); } catch { /* 용량 초과는 무시 */ }
@@ -773,7 +814,7 @@ async function reversePlace(lat, lon) {
   return p && { ...p, lat, lon };
 }
 
-return { forecastUrl, airUrl, localIsoToMs, normalize, loadForecast, lastForecast, osmPlace, mergePlaces, searchPlace, reversePlace, LEVELS, FETCH_MS, AIR_MS, LAST_KEY, LAST_OK };
+return { forecastUrl, airUrl, localIsoToMs, normalize, hostOrder, fetchFromHosts, loadForecast, lastForecast, osmPlace, mergePlaces, searchPlace, reversePlace, LEVELS, FORECAST_HOSTS, FETCH_MS, AIR_MS, HOST_KEY, HOST_KEEP, LAST_KEY, LAST_OK };
 })();
 // ── js/view.js
 __m["js/view.js"] = (() => {
@@ -1752,7 +1793,7 @@ __m["widget/app.js"] = (() => {
 // 계산과 배치는 data.js·layout.js에 있고 여기서는 Scriptable API만 다룬다.
 /* global Astronomy, config, args, Script, Request, FileManager, ListWidget, DrawContext, Size, Rect, Point, Path, Color, Font, Timer, Location, Device */
 const { makeSky } = __m["js/sky.js"];
-const { forecastUrl, airUrl, normalize } = __m["js/api.js"];
+const { forecastUrl, airUrl, normalize, fetchFromHosts } = __m["js/api.js"];
 const { widgetModel } = __m["widget/data.js"];
 const { layout, lockText, lockCircle, widgetSize } = __m["widget/layout.js"];
 const { parseParam, roundHere, hereName } = __m["widget/param.js"];
@@ -1763,7 +1804,7 @@ const TTL = 30 * 60e3;
 
 // 여러 위젯이 한꺼번에 새로 고칠 때 저마다 예보를 받으면 시간·메모리를 나눠 쓰다 시간 초과가 난다.
 // 그래서 받는 중 표시(.lock)를 두고, 다른 위젯이 받는 중이면 직접 받지 않고 예전 것이나 그 결과를 쓴다.
-const LOCK_MS = 20e3, WAIT_MS = 8e3, FETCH_TIMEOUT = 8, OLD_OK = 6 * 3600e3, SOON = 5 * 60e3;
+const LOCK_MS = 20e3, WAIT_MS = 12e3, FETCH_TIMEOUT = 7, OLD_OK = 6 * 3600e3, SOON = 5 * 60e3;
 const sleep = ms => new Promise(r => Timer.schedule(ms, false, r));
 
 /**
@@ -1795,9 +1836,16 @@ async function loadData(place) {
   const mine = String(Date.now());
   try { fm.writeString(lock, mine); } catch (e) { /* 표시는 없어도 된다 */ }
   try {
-    const q = new Request(forecastUrl(place.lat, place.lon)); q.timeoutInterval = FETCH_TIMEOUT;
-    const fc = await q.loadJSON();
-    if (!fc || !fc.hourly) throw new Error('예보 응답이 비었다');
+    // 서버를 차례로 묻는다(첫 서버가 멈추는 일이 있다 — js/api.js FORECAST_HOSTS). 넘어간 서버는 한동안 먼저 묻는다
+    const hostPath = fm.joinPath(fm.cacheDirectory(), 'astro-host.json');
+    let saved = null;
+    try { if (fm.fileExists(hostPath)) saved = JSON.parse(fm.readString(hostPath)); } catch (e) { saved = null; }
+    const got = await fetchFromHosts(host => {
+      const q = new Request(forecastUrl(place.lat, place.lon, host)); q.timeoutInterval = FETCH_TIMEOUT;
+      return q.loadJSON();
+    }, saved);
+    try { if (got.saved !== saved) fm.writeString(hostPath, JSON.stringify(got.saved)); } catch (e) { /* 없어도 된다 */ }
+    const fc = got.fc;
     let air = null;
     try {
       const r = new Request(airUrl(place.lat, place.lon)); r.timeoutInterval = FETCH_TIMEOUT / 2;

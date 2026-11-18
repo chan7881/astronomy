@@ -174,7 +174,7 @@ async function load() {
   document.body.classList.add('loading');
   let data = null, error = null;
   try { data = await loadForecast(place.lat, place.lon); }
-  catch (e) { error = `예보를 불러오지 못했습니다 (${e.name === 'TimeoutError' ? '응답 없음' : e.message})`; }
+  catch (e) { error = `예보를 불러오지 못했습니다 (${e.name === 'TimeoutError' || e.name === 'AbortError' ? '응답 없음' : e.message})`; }
   if (seq !== loadSeq) return;            // 그사이 다른 요청이 나갔다 — 늦게 온 답은 버린다
   document.body.classList.remove('loading');
   if (data) { state.data = data; state.dataAt = Date.now(); }   // 실패하면 앞서 받은 예보를 그대로 둔다

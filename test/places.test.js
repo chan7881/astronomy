@@ -91,7 +91,7 @@ test('현재 위치: GPS가 안 잡히면 대강의 위치로 한 번 더, 권�
 
 // ── 예보 받기: 시간 제한 · 지난 예보 대신 보이기 ─────────────────
 import { loadForecast, lastForecast, LAST_KEY, LAST_OK } from '../js/api.js';
-function fakeStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), m }; }
+function fakeStorage() { const m = new Map(); return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k), m }; }
 const okResp = body => ({ ok: true, status: 200, json: async () => body });
 const FC = { utc_offset_seconds: 32400, elevation: 20, timezone: 'Asia/Seoul', hourly: { time: ['2026-11-17T00:00'], temperature_2m: [5], dew_point_2m: [1], relative_humidity_2m: [70], cloud_cover: [10], cloud_cover_low: [10], cloud_cover_mid: [0], cloud_cover_high: [0], wind_speed_10m: [2], wind_direction_10m: [0], wind_gusts_10m: [3] } };
 
@@ -108,12 +108,59 @@ test('예보 받기: 서버가 답 없이 멈추면 시간 제한으로 실패�
   };
   try {
     await assert.rejects(loadForecast(36.019, 129.343), e => e.name === 'TimeoutError');
-    assert.equal(signals.length, 2);
+    assert.equal(signals.length, 3, '예보 서버 둘 + 대기질');
     assert.ok(signals.every(s => s instanceof AbortSignal), '모든 요청에 시간 제한');
-    assert.deepEqual(asked, [api.FETCH_MS, api.AIR_MS]);
-    assert.ok(api.FETCH_MS <= 30e3 && api.FETCH_MS >= 5e3);
+    assert.deepEqual(asked, [api.FETCH_MS, api.AIR_MS, api.FETCH_MS]);
+    assert.ok(api.FETCH_MS <= 15e3 && api.FETCH_MS >= 5e3);
     assert.equal(lastForecast(36.019, 129.343), null, '실패한 것은 남기지 않는다');
   } finally { globalThis.fetch = realFetch; AbortSignal.timeout = realTimeout; }
+});
+
+test('예보 받기: 첫 서버가 멈추면 다음 서버에서 받고, 그 뒤로는 받은 서버부터 묻는다', async () => {
+  globalThis.sessionStorage = fakeStorage(); globalThis.localStorage = fakeStorage();
+  const api = await import('../js/api.js');
+  const realFetch = globalThis.fetch, urls = [];
+  globalThis.fetch = async (url, opt) => {
+    url = String(url); urls.push(url);
+    if (url.startsWith('https://api.open-meteo.com/')) throw new DOMException('Fetch is aborted', 'AbortError');   // 사파리의 시간 초과
+    return okResp(url.includes('air-quality') ? { utc_offset_seconds: 32400, hourly: { time: [] } } : FC);
+  };
+  try {
+    assert.deepEqual(api.FORECAST_HOSTS.slice(0, 2), ['api.open-meteo.com', 'previous-runs-api.open-meteo.com']);
+    const d = await loadForecast(36.019, 129.343);
+    assert.equal(d.hours.length, 1);
+    const fc = urls.filter(u => u.includes('/v1/forecast?'));
+    assert.deepEqual(fc.map(u => new URL(u).host), ['api.open-meteo.com', 'previous-runs-api.open-meteo.com']);
+    assert.equal(new URL(fc[1]).search, new URL(api.forecastUrl(36.019, 129.343)).search, '같은 변수를 묻는다');
+    urls.length = 0; globalThis.sessionStorage = fakeStorage();   // 캐시를 비우고 다시
+    await loadForecast(36.019, 129.343);
+    assert.deepEqual(urls.filter(u => u.includes('/v1/forecast?')).map(u => new URL(u).host), ['previous-runs-api.open-meteo.com'], '멈춘 서버를 또 기다리지 않는다');
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test('예보 서버 순서: 넘어간 서버는 한 시간 동안 먼저, 그 뒤엔 첫 서버부터 · 빈 응답은 다음 서버 · 모두 실패하면 첫 서버의 오류', async () => {
+  const { hostOrder, fetchFromHosts, HOST_KEEP, FORECAST_HOSTS: H } = await import('../js/api.js');
+  const now = 1e12;
+  assert.deepEqual(hostOrder(null, now), [0, 1]);
+  assert.deepEqual(hostOrder({ i: 1, at: now - 60e3 }, now), [1, 0]);
+  assert.deepEqual(hostOrder({ i: 1, at: now - HOST_KEEP }, now), [0, 1], '한 시간 지남');
+  assert.deepEqual(hostOrder({ i: 1, at: now + 60e3 }, now), [0, 1], '앞날 시각(시계 틀림)');
+  for (const bad of [{ i: 5, at: now }, { i: '1', at: now }, { i: 0, at: now }, {}]) assert.deepEqual(hostOrder(bad, now), [0, 1], JSON.stringify(bad));
+  const good = { hourly: { time: [] } };
+  // 첫 서버가 빈 응답(200인데 hourly 없음)이면 다음 서버에서 받고 넘어간 때를 기억한다
+  let r = await fetchFromHosts(async h => (h === H[0] ? { error: true } : good), null, now);
+  assert.ok(r.fc === good && r.i === 1); assert.deepEqual(r.saved, { i: 1, at: now });
+  // 기억한 서버에서 받으면 기억을 그대로 둔다(넘어간 때를 늦추지 않는다)
+  const saved = { i: 1, at: now - 60e3 };
+  r = await fetchFromHosts(async () => good, saved, now);
+  assert.ok(r.i === 1 && r.saved === saved);
+  // 기억한 서버가 실패해 첫 서버에서 받으면 기억을 지운다
+  r = await fetchFromHosts(async h => { if (h === H[1]) throw new Error('x'); return good; }, saved, now);
+  assert.ok(r.i === 0 && r.saved === null);
+  // 모두 실패: 묻는 순서와 상관없이 첫 서버의 오류
+  const fail = async h => { throw new Error(h); };
+  await assert.rejects(fetchFromHosts(fail, saved, now), { message: H[0] });
+  await assert.rejects(fetchFromHosts(fail, null, now), { message: H[0] });
 });
 
 test('예보 받기: 받은 예보를 남기고, 같은 관측지·하루 안이면 대신 보인다', async () => {

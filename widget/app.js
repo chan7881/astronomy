@@ -2,7 +2,7 @@
 // 계산과 배치는 data.js·layout.js에 있고 여기서는 Scriptable API만 다룬다.
 /* global Astronomy, config, args, Script, Request, FileManager, ListWidget, DrawContext, Size, Rect, Point, Path, Color, Font, Timer, Location, Device */
 import { makeSky } from '../js/sky.js';
-import { forecastUrl, airUrl, normalize } from '../js/api.js';
+import { forecastUrl, airUrl, normalize, fetchFromHosts } from '../js/api.js';
 import { widgetModel } from './data.js';
 import { layout, lockText, lockCircle, widgetSize } from './layout.js';
 import { parseParam, roundHere, hereName } from './param.js';
@@ -13,7 +13,7 @@ const TTL = 30 * 60e3;
 
 // 여러 위젯이 한꺼번에 새로 고칠 때 저마다 예보를 받으면 시간·메모리를 나눠 쓰다 시간 초과가 난다.
 // 그래서 받는 중 표시(.lock)를 두고, 다른 위젯이 받는 중이면 직접 받지 않고 예전 것이나 그 결과를 쓴다.
-const LOCK_MS = 20e3, WAIT_MS = 8e3, FETCH_TIMEOUT = 8, OLD_OK = 6 * 3600e3, SOON = 5 * 60e3;
+const LOCK_MS = 20e3, WAIT_MS = 12e3, FETCH_TIMEOUT = 7, OLD_OK = 6 * 3600e3, SOON = 5 * 60e3;
 const sleep = ms => new Promise(r => Timer.schedule(ms, false, r));
 
 /**
@@ -45,9 +45,16 @@ async function loadData(place) {
   const mine = String(Date.now());
   try { fm.writeString(lock, mine); } catch (e) { /* 표시는 없어도 된다 */ }
   try {
-    const q = new Request(forecastUrl(place.lat, place.lon)); q.timeoutInterval = FETCH_TIMEOUT;
-    const fc = await q.loadJSON();
-    if (!fc || !fc.hourly) throw new Error('예보 응답이 비었다');
+    // 서버를 차례로 묻는다(첫 서버가 멈추는 일이 있다 — js/api.js FORECAST_HOSTS). 넘어간 서버는 한동안 먼저 묻는다
+    const hostPath = fm.joinPath(fm.cacheDirectory(), 'astro-host.json');
+    let saved = null;
+    try { if (fm.fileExists(hostPath)) saved = JSON.parse(fm.readString(hostPath)); } catch (e) { saved = null; }
+    const got = await fetchFromHosts(host => {
+      const q = new Request(forecastUrl(place.lat, place.lon, host)); q.timeoutInterval = FETCH_TIMEOUT;
+      return q.loadJSON();
+    }, saved);
+    try { if (got.saved !== saved) fm.writeString(hostPath, JSON.stringify(got.saved)); } catch (e) { /* 없어도 된다 */ }
+    const fc = got.fc;
     let air = null;
     try {
       const r = new Request(airUrl(place.lat, place.lon)); r.timeoutInterval = FETCH_TIMEOUT / 2;

@@ -254,7 +254,7 @@ test('묶음: 가짜 Scriptable에서 모든 크기·종류가 오류 없이 위
       console, Date, Math, JSON, encodeURIComponent, Promise,
       config: { widgetFamily: family, runsInWidget: true }, args: { widgetParameter: param },
       Script: { setWidget: w => { log.widget = w; log.setAt = Date.now(); }, complete() { log.done = true; } },
-      Request: class { constructor(url) { this.url = url; log.requests.push(url); } async loadJSON() { if (onFetch) onFetch(log.files); return JSON.parse(JSON.stringify(this.url.includes('air-quality') ? air : fc)); }
+      Request: class { constructor(url) { this.url = url; log.requests.push(url); } async loadJSON() { if (onFetch) onFetch(log.files, this.url); return JSON.parse(JSON.stringify(this.url.includes('air-quality') ? air : fc)); }
         async loadString() { this.response = { statusCode: 200 }; return code; } },
       FileManager: { local: () => ({ cacheDirectory: () => '/c', libraryDirectory: () => '/l', modificationDate: () => new Date(), joinPath: (a, b) => a + '/' + b, fileExists: p => p in log.files, readString: p => log.files[p], writeString: (p, s) => { log.files[p] = s; }, remove: p => { delete log.files[p]; } }) },
       Timer: { schedule: (ms, rep, f) => { log.waits++; if (onWait) onWait(log.files); setImmediate(f); } },
@@ -268,7 +268,7 @@ test('묶음: 가짜 Scriptable에서 모든 크기·종류가 오류 없이 위
     assert.ok(w && log.done, label);
     const api = log.requests.filter(u => u.includes('open-meteo'));
     assert.equal(api.length, apiCalls, label);
-    if (apiCalls) assert.ok(api[0].startsWith('https://api.open-meteo.com/v1/forecast?latitude=36.019&longitude=129.343&'), api[0]);
+    if (apiCalls) assert.match(api[0], /^https:\/\/(api|previous-runs-api)\.open-meteo\.com\/v1\/forecast\?latitude=36\.019&longitude=129\.343&/);
     assert.ok(w.refreshAfterDate.getTime() > now && w.url.startsWith('https://'), label);
     if (family === 'accessoryInline') assert.match(w.texts[0], /^관측 \d+ · /);
     else if (family === 'accessoryRectangular') assert.equal(w.texts.length, 3);
@@ -302,7 +302,7 @@ test('묶음: 가짜 Scriptable에서 모든 크기·종류가 오류 없이 위
   // 예전 것이 6시간보다 오래됐고 다른 위젯이 계속 받는 중이면 기다리되, 겹쳐 받지 않고 5분 뒤 다시 고친다
   const veryOld = JSON.stringify({ at: now - 10 * 3600e3, fc, air });
   r = await runCase('large', '기상', code, { [C + '.json']: veryOld, [C + '.lock']: String(Date.now() + 60e3) }, 0);
-  assert.equal(r.waits, 16);
+  assert.equal(r.waits, 24, '첫 서버 7초 + 다른 서버보다 길게(12초) 기다린다');
   assert.ok(r.widget.refreshAfterDate.getTime() - r.setAt < 11 * 60e3, '곧 다시 고친다');
   // 기다리는 중 그 위젯이 실패하고 표시를 지우면 더 기다리지 않고 직접 받는다
   onWait = files => { delete files[C + '.lock']; };
@@ -314,6 +314,27 @@ test('묶음: 가짜 Scriptable에서 모든 크기·종류가 오류 없이 위
   r = await runCase('large', '기상', code);
   onFetch = null;
   assert.equal(r.files[C + '.lock'], 'other');
+  // 첫 예보 서버가 멈추면(시간 초과) 다음 서버에서 받고, 그것을 저장한다
+  onFetch = (files, url) => { if (url.startsWith('https://api.open-meteo.com/')) throw new Error('The request timed out.'); };
+  r = await runCase('large', '기상', code, {}, 3);
+  onFetch = null;
+  assert.ok(r.requests.some(u => u.startsWith('https://previous-runs-api.open-meteo.com/v1/forecast?latitude=36.019&longitude=129.343&')), r.requests.join(' '));
+  assert.ok(JSON.parse(r.files[C + '.json']).at >= now, '다음 서버에서 받은 것을 저장');
+  const H = '/c/astro-host.json', saved = JSON.parse(r.files[H]);
+  assert.ok(saved.i === 1 && saved.at >= now, '넘어간 서버를 기억한다');
+  // 다음 번에는 그 서버부터 묻는다(멈춘 서버를 또 7초 기다리지 않는다)
+  r = await runCase('large', '기상', code, { [H]: JSON.stringify(saved) }, 2);
+  assert.ok(r.requests.find(u => u.includes('/v1/forecast?')).startsWith('https://previous-runs-api.open-meteo.com/'));
+  assert.equal(r.files[H], JSON.stringify(saved), '넘어간 때를 늦추지 않는다');
+  // 한 시간이 지나면 첫 서버를 다시 묻고, 받으면 기억을 지운다
+  r = await runCase('large', '기상', code, { [H]: JSON.stringify({ i: 1, at: Date.now() - 2 * 3600e3 }) }, 2);
+  assert.equal(r.files[H], 'null');
+  // 모든 서버가 멈추면 예전 것을 보이고 곧 다시 고친다
+  onFetch = (files, url) => { if (url.includes('/v1/forecast?')) throw new Error('The request timed out.'); };
+  r = await runCase('large', '기상', code, { [C + '.json']: veryOld }, 2);
+  onFetch = null;
+  assert.equal(JSON.parse(r.files[C + '.json']).at, now - 10 * 3600e3, '실패하면 저장본을 덮지 않는다');
+  assert.ok(r.widget.refreshAfterDate.getTime() - r.setAt < 11 * 60e3, '곧 다시 고친다');
   // 위젯마다 다시 고칠 때가 어긋난다
   const late = r => Math.round((r.widget.refreshAfterDate.getTime() - r.setAt - 30 * 60e3) / 1e3);   // 30분 뒤에서 몇 초 더
   const d1 = late(await runCase('large', '기상', code)), d2 = late(await runCase('large', '기상 | 유리', code));
