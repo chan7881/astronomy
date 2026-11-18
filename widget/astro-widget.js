@@ -1138,11 +1138,12 @@ function mark(c, g, cx, cy, s = 4) {
 }
 
 /** 모양 + 등급 글자를 x부터 나란히. 끝 x를 돌려준다 */
-function tag(c, g, x, y, size = 12, label = g ? GRADE_KO[g] : '') {
+function tag(c, g, x, y, size = 12, label = g ? GRADE_KO[g] : '', maxW = 0) {
   if (!g) return x;
-  mark(c, g, x + size * 0.42, y + size * 0.62, size * 0.36);
-  c.text(label, x + size * 1.05, y, { size, weight: 'b', color: T[g] });
-  return x + size * 1.05 + textWidth(label, size);
+  c.text(label, x + size * 1.05, y, { size, weight: 'b', color: T[g], fit: maxW && Math.max(1, maxW - size * 1.05) });
+  const t = c.ops[c.ops.length - 1], k = t.size / size;   // 글귀가 줄었으면 모양도 같은 비율로
+  mark(c, g, x + size * 0.42, y + size * 0.62, size * 0.36 * k);
+  return x + size * 1.05 + textWidth(t.text, t.size);
 }
 
 // 유리풍 바탕: 왼쪽 위가 밝은 비스듬한 빛. DrawContext에 그라데이션이 없어 좁은 띠로 나눠 칠한다(판 밖은 잘린다).
@@ -1171,7 +1172,7 @@ function rows(c, list, x, y, w, { rh = 22, size = 12, lw = 36 } = {}) {
   list.forEach(([k, v], i) => {
     const ty = y + i * rh + (rh - size * 1.2) / 2;
     c.text(k, x, ty, { size, weight: 'b', color: T.ink3 });
-    if (typeof v === 'function') v(x + lw, ty); else c.text(v, x + lw, ty, { size, fit: w - lw });
+    if (typeof v === 'function') v(x + lw, ty, w - lw); else c.text(v, x + lw, ty, { size, fit: w - lw });
     if (i < list.length - 1) c.line(x, y + (i + 1) * rh, x + w, y + (i + 1) * rh);
   });
 }
@@ -1327,9 +1328,12 @@ function winLong(m, v) {
   return w ? `${hm(w.from)}–${hm(Math.min(w.to, v.darkTo))}` : '없음';
 }
 const pct = x => (fin(x) ? `${Math.round(x)}%` : '–');
-const cautionRow = (c, s) => (x, y) => {
+const cautionRow = (c, s) => (x, y, maxW) => {
   if (!s || !s.cautions.length) { c.text('없음', x, y); return; }
-  tag(c, 'b', x, y, 12, s.cautions.join(' · '));
+  // 0.6배로도 안 들어가면 항목을 통째로 뒤에서부터 빼고 「외 N」(항목 중간을 …로 자르지 않는다)
+  let n = s.cautions.length, label = s.cautions.join(' · ');
+  while (n > 1 && maxW && 12 * 1.05 + textWidth(label, 12 * FIT_MIN) > maxW) { n--; label = `${s.cautions.slice(0, n).join(' · ')} 외 ${s.cautions.length - n}`; }
+  tag(c, 'b', x, y, 12, label, maxW);
 };
 
 /** 고도 위젯: 곡선과 아래 글귀를 나누는 선의 y */
@@ -1816,8 +1820,9 @@ function lockWidget(family, kind, model) {
     w.addImage(paint(lockCircle(kind, model), false)).centerAlignImage();
     return w;
   }
-  const t = w.addText(L.title); t.font = Font.boldSystemFont(13); t.lineLimit = 1;
-  for (const s of L.lines) { const x = w.addText(s); x.font = Font.systemFont(12); x.lineLimit = 1; }
+  // 칸을 넘으면 iOS가 0.6배까지 줄인다(홈 화면 위젯의 fit과 같은 유동 글자 크기)
+  const t = w.addText(L.title); t.font = Font.boldSystemFont(13); t.lineLimit = 1; t.minimumScaleFactor = 0.6;
+  for (const s of L.lines) { const x = w.addText(s); x.font = Font.systemFont(12); x.lineLimit = 1; x.minimumScaleFactor = 0.6; }
   return w;
 }
 

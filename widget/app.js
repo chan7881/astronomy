@@ -135,8 +135,9 @@ function lockWidget(family, kind, model) {
     w.addImage(paint(lockCircle(kind, model), false)).centerAlignImage();
     return w;
   }
-  const t = w.addText(L.title); t.font = Font.boldSystemFont(13); t.lineLimit = 1;
-  for (const s of L.lines) { const x = w.addText(s); x.font = Font.systemFont(12); x.lineLimit = 1; }
+  // 칸을 넘으면 iOS가 0.6배까지 줄인다(홈 화면 위젯의 fit과 같은 유동 글자 크기)
+  const t = w.addText(L.title); t.font = Font.boldSystemFont(13); t.lineLimit = 1; t.minimumScaleFactor = 0.6;
+  for (const s of L.lines) { const x = w.addText(s); x.font = Font.systemFont(12); x.lineLimit = 1; x.minimumScaleFactor = 0.6; }
   return w;
 }
 

@@ -20,23 +20,23 @@ const POHANG = { name: '포항', lat: 36.019, lon: 129.343, elev: 20 };
 const KST = 9 * 3600e3, kst = s => Date.parse(s + '+09:00');
 
 /** Open-Meteo 응답 흉내. start: 현지 시각 'YYYY-MM-DDTHH:00', 값은 시각과 무관하게 일정 */
-function fakeForecast(start, hours, { cloud = 10, dew = 4 } = {}) {
+function fakeForecast(start, hours, { cloud = 10, dew = 4, jet = 1, aod = 0.1, precip = 0 } = {}) {
   const t0 = Date.parse(start + ':00Z'), time = Array.from({ length: hours }, (_, i) => new Date(t0 + i * 3600e3).toISOString().slice(0, 16));
   const fill = v => time.map(() => v);
   const hourly = {
     time, temperature_2m: fill(10), dew_point_2m: fill(dew), relative_humidity_2m: fill(60), cloud_cover: fill(cloud),
-    cloud_cover_low: fill(cloud), cloud_cover_mid: fill(0), cloud_cover_high: fill(0), wind_speed_10m: fill(2),
-    wind_direction_10m: fill(270), wind_gusts_10m: fill(4), precipitation_probability: fill(0), visibility: fill(20000),
+    cloud_cover_low: fill(cloud), cloud_cover_mid: fill(0), cloud_cover_high: fill(0), wind_speed_10m: fill(2 * jet),
+    wind_direction_10m: fill(270), wind_gusts_10m: fill(4 * jet), precipitation_probability: fill(precip), visibility: fill(20000),
   };
   for (const p of LEVELS) {
     const z = 44330 * (1 - (p / 1013.25) ** 0.1903);
     hourly[`temperature_${p}hPa`] = fill(Math.max(-56.5, 15 - 6.5 * z / 1000));
     hourly[`geopotential_height_${p}hPa`] = fill(z);
-    hourly[`wind_speed_${p}hPa`] = fill(5 + z / 1000);
+    hourly[`wind_speed_${p}hPa`] = fill((5 + z / 1000) * jet);
     hourly[`wind_direction_${p}hPa`] = fill(270);
   }
   const fc = { utc_offset_seconds: 32400, elevation: 20, timezone: 'Asia/Seoul', hourly };
-  const air = { utc_offset_seconds: 32400, hourly: { time, aerosol_optical_depth: fill(0.1), pm2_5: fill(10), dust: fill(1) } };
+  const air = { utc_offset_seconds: 32400, hourly: { time, aerosol_optical_depth: fill(aod), pm2_5: fill(10), dust: fill(1) } };
   return { fc, air };
 }
 const fixture = opt => { const { fc, air } = fakeForecast('2026-11-15T00:00', 24 * 7, opt); return normalize(fc, air); };
@@ -663,4 +663,37 @@ test('유동 글자 크기: 한 달(모든 위상) 동안 13종 글자가 판 �
   const long = fitText({ text: '아주아주 긴 글귀입니다', size: 10, y: 0 }, 50);   // 0.6배로도 안 들어가면 뒤를 …로
   assert.ok(long.size === 6 && long.text.endsWith('…') && textWidth(long.text, 6) <= 50, JSON.stringify(long));
   assert.equal(seen.get('초승달'), 16, '짧은 이름은 원래 크기');
+});
+
+test('유동 글자 크기: 주의가 겹친 밤 · 긴 관측지 이름(내 위치) · 남반구 · 여러 시각에도 13종 글자가 판 밖으로 나가지 않는다', () => {
+  const places = [POHANG, { name: '보현산천문대 관측소 부근 산골마을', lat: 36.16, lon: 128.97, elev: 1100, here: true }, { name: '시드니', lat: -33.87, lon: 129.34, elev: 20 }];
+  const opts = [{ cloud: 95, dew: 9.5 }, { jet: 4, dew: 9.8, aod: 0.8, precip: 60 }, { cloud: 0, dew: -20 }];
+  let five = 0, shrunk = 0;
+  for (const day of ['2026-11-16', '2026-11-19', '2026-11-24', '2026-12-01']) for (const hh of ['03:00', '13:00', '21:10']) for (const o of opts) for (const p of places) {
+    const start = new Date(Date.parse(day + 'T00:00Z') - 864e5).toISOString().slice(0, 16);
+    const { fc, air } = fakeForecast(start, 24 * 7, o), m = widgetModel(sky, p, normalize(fc, air), kst(`${day}T${hh}`));
+    if (m.nights[0].summary && m.nights[0].summary.cautions.length >= 5) five++;
+    for (const kind of Object.keys(KINDS)) {
+      const spec = layout(kind, m, { glass: p === POHANG }), [w, h] = SIZES[KINDS[kind]];
+      if (spec.ops.some(t => t.op === 'text' && t.text.includes('결로 · ') && t.size < 12)) shrunk++;
+      for (const t of spec.ops.filter(t => t.op === 'text')) {
+        const tw = textWidth(t.text, t.size), l = t.align === 'l' ? t.x : t.align === 'c' ? t.x - tw / 2 : t.x - tw;
+        assert.ok(l >= 2 && l + tw <= w - 2 && t.y >= 0 && t.y + t.size * 1.2 <= h + 1, `${day} ${hh} ${p.name} ${kind}: 「${t.text}」 ${l.toFixed(1)}~${(l + tw).toFixed(1)} / ${w}`);
+      }
+    }
+  }
+  assert.ok(five > 0 && shrunk > 0, `주의 5개인 밤 ${five}, 줄어든 주의 칸 ${shrunk}`);
+});
+
+test('유동 글자 크기: 주의 칸은 0.6배로도 안 들어가면 항목을 통째로 빼고 「외 N」, 줄어든 만큼 모양도 작아진다', () => {
+  const s0 = model().nights[0].summary;
+  const many = ['가나다라마', '바사아자차', '카타파하가', '나다라마바', '사아자차카', '타파하가나', '다라마바사'];
+  const ink = layout('판정', { ...model(), nights: [{ ...model().nights[0], summary: { ...s0, cautions: many } }, ...model().nights.slice(1)] }).ops;
+  const t = ink.find(o => o.op === 'text' && o.text.startsWith(many[0]));
+  assert.ok(t && / 외 \d$/.test(t.text) && !t.text.includes('…'), t && t.text);
+  const kept = t.text.replace(/ 외 \d$/, '').split(' · ');
+  assert.deepEqual(kept, many.slice(0, kept.length), '앞 항목을 통째로 남긴다');
+  assert.equal(Number(t.text.slice(-1)), many.length - kept.length);
+  const sq = ink.find(o => o.op === 'rect' && o.fill === T.b && o.w < 12 * 0.36 * 1.8 - 0.01);
+  assert.ok(sq, '나쁨 네모도 글귀와 같이 작아진다');
 });
