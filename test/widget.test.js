@@ -6,7 +6,7 @@ import { makeSky } from '../js/sky.js';
 import { normalize, LEVELS } from '../js/api.js';
 import { baseNoon, nightView } from '../js/view.js';
 import { widgetModel, highestBody, bandHours } from '../widget/data.js';
-import { layout, lockText, lockCircle, moonShape, dashes, textWidth, blockValue, KINDS, SIZES, ALT_RULE } from '../widget/layout.js';
+import { layout, lockText, lockCircle, moonShape, dashes, textWidth, fitText, blockValue, KINDS, SIZES, ALT_RULE } from '../widget/layout.js';
 import { parseParam, roundHere, hereName } from '../widget/param.js';
 import { toSvg } from '../widget/svg.js';
 import { T } from '../widget/theme.js';
@@ -637,4 +637,30 @@ test('내 위치 읽기: 지명을 못 찾으면 「내 위치」로 보이되 �
   assert.equal(g.calls.geocode, 1);
   fakeScriptable({ pos: null, files: new Map([['/c/astro-here.json', '{"at":1}']]) });
   assert.equal((await resolveHere(parseParam('', 'small').place)).name, '포항');
+});
+
+test('유동 글자 크기: 한 달(모든 위상) 동안 13종 글자가 판 밖으로 나가지 않고, 긴 달 이름만 작아진다', () => {
+  const seen = new Map();
+  for (let k = 0; k < 30; k++) {
+    const day = new Date(Date.parse('2026-11-16T00:00Z') + k * 864e5).toISOString().slice(0, 10);
+    const start = new Date(Date.parse(day + 'T00:00Z') - 864e5).toISOString().slice(0, 16);
+    const { fc, air } = fakeForecast(start, 24 * 7), m = widgetModel(sky, POHANG, normalize(fc, air), kst(day + 'T21:10'));
+    for (const kind of Object.keys(KINDS)) {
+      const spec = layout(kind, m), [w] = SIZES[KINDS[kind]];
+      for (const o of spec.ops.filter(o => o.op === 'text')) {
+        const tw = textWidth(o.text, o.size), left = o.align === 'l' ? o.x : o.align === 'c' ? o.x - tw / 2 : o.x - tw;
+        assert.ok(left >= 2 && left + tw <= w - 2, `${day} ${kind}: 「${o.text}」 ${left.toFixed(1)}~${(left + tw).toFixed(1)} / ${w}`);
+      }
+    }
+    const name = m.nights[0].moon.name, t = layout('달', m).ops.find(o => o.op === 'text' && o.text === name);
+    seen.set(name, t.size);
+  }
+  assert.ok(seen.has('차오르는 달') && seen.has('기우는 달') && seen.has('초승달'), [...seen.keys()].join(','));
+  for (const n of ['차오르는 달', '기우는 달']) {
+    const z = seen.get(n);
+    assert.ok(z < 16 && z >= 16 * 0.6 && 86 + textWidth(n, z) <= 158 - 14 + 0.01, `${n} ${z}`);   // 관측지 이름과 같은 오른쪽 여백(PAD)
+  }
+  const long = fitText({ text: '아주아주 긴 글귀입니다', size: 10, y: 0 }, 50);   // 0.6배로도 안 들어가면 뒤를 …로
+  assert.ok(long.size === 6 && long.text.endsWith('…') && textWidth(long.text, 6) <= 50, JSON.stringify(long));
+  assert.equal(seen.get('초승달'), 16, '짧은 이름은 원래 크기');
 });

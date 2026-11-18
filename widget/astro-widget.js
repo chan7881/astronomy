@@ -1107,7 +1107,7 @@ function canvas(w, h) {
     line: (x1, y1, x2, y2, color = T.line, sw = 1) => ops.push({ op: 'line', x1, y1, x2, y2, color, sw }),
     poly: (pts, o = {}) => pts.length > 1 && ops.push({ op: 'poly', pts, ...o }),
     circle: (cx, cy, r, o = {}) => ops.push({ op: 'circle', cx, cy, r, ...o }),
-    text: (text, x, y, o = {}) => ops.push({ op: 'text', text: String(text), x, y, size: 12, weight: 'm', color: T.ink, align: 'l', ...o }),
+    text: (text, x, y, o = {}) => ops.push(fitText({ op: 'text', text: String(text), x, y, size: 12, weight: 'm', color: T.ink, align: 'l', ...o })),
   };
 }
 
@@ -1116,6 +1116,17 @@ function textWidth(s, size) {
   let em = 0;
   for (const ch of String(s)) em += /[ᄀ-ᇿ　-鿿가-힣]/.test(ch) ? 1 : ch === ' ' ? 0.3 : /[.,:·°″′]/.test(ch) ? 0.32 : 0.6;
   return em * size;
+}
+
+/** 유동 글자 크기: fit(최대 너비)을 넘는 글귀만 그 너비에 맞게 줄인다(최소 원래의 FIT_MIN배, 그래도 넘으면 뒤를 …로). 줄 상자의 가운데는 그대로 둔다 */
+const FIT_MIN = 0.6;
+function fitText(o, fitW) {
+  const { fit = fitW, ...t } = o;
+  if (!(fit > 0)) return t;
+  const w = textWidth(t.text, t.size);
+  if (w <= fit) return t;
+  const size = Math.max(t.size * FIT_MIN, t.size * fit / w);
+  return { ...t, text: fitName(t.text, size, fit), y: t.y + (t.size - size) * 0.6, size };
 }
 
 /** 등급 모양: 좋음 ●, 보통 ▲, 나쁨 ■ (색 + 모양 + 글자의 「모양」) */
@@ -1160,7 +1171,7 @@ function rows(c, list, x, y, w, { rh = 22, size = 12, lw = 36 } = {}) {
   list.forEach(([k, v], i) => {
     const ty = y + i * rh + (rh - size * 1.2) / 2;
     c.text(k, x, ty, { size, weight: 'b', color: T.ink3 });
-    if (typeof v === 'function') v(x + lw, ty); else c.text(v, x + lw, ty, { size });
+    if (typeof v === 'function') v(x + lw, ty); else c.text(v, x + lw, ty, { size, fit: w - lw });
     if (i < list.length - 1) c.line(x, y + (i + 1) * rh, x + w, y + (i + 1) * rh);
   });
 }
@@ -1358,7 +1369,7 @@ const LAYOUTS = {
   달(m) {
     const v = m.nights[0], { hm } = clock(m.offMs), c = frame('달');
     moonDisc(c, v.moon.deg, 44, 46, 30, m.place.lat < 0);
-    c.text(v.moon.name, 86, 17, { size: 16, weight: 'b' });
+    c.text(v.moon.name, 86, 17, { size: 16, weight: 'b', fit: 158 - PAD - 86 });
     c.text(`밝은 면 ${Math.round(v.moon.frac * 100)}%`, 86, 38, { size: 11, color: T.ink2 });
     c.text(`월령 ${v.moon.age.toFixed(1)}`, 86, 50, { size: 11, color: T.ink2 });
     placeName(c, m, 86, 67, { size: 10, maxW: 144 - 86 });
@@ -1549,7 +1560,7 @@ function lockCircle(kind, m) {
   return { w: c.w, h: c.h, ops: c.ops };
 }
 
-return { textWidth, moonShape, dashes, blockValue, layout, lockText, lockCircle, SIZES, KINDS, DEFAULT_KIND, ALT_RULE };
+return { textWidth, fitText, moonShape, dashes, blockValue, layout, lockText, lockCircle, SIZES, KINDS, DEFAULT_KIND, ALT_RULE };
 })();
 // ── js/places.js
 __m["js/places.js"] = (() => {
